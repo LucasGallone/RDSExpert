@@ -399,7 +399,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                 </div>
             )}
 
-            {/* DETAIL MODE (RDS Spy Style) */}
+            {/* DETAIL MODE */}
             {viewMode === 'DETAIL' && (
                 <div className="h-96 bg-black flex flex-col border-b border-slate-800">
                      <div className="p-2 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
@@ -430,7 +430,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                 </div>
             )}
 
-            {/* HEX VIEWER MODE (Cleaned) */}
+            {/* HEX VIEWER MODE */}
             {viewMode === 'HEX' && (
                 <div className="h-96 bg-black p-4 border-b border-slate-800 grid grid-cols-4 gap-4 overflow-hidden relative z-10">
                      {[0, 1, 2, 3].map(colIdx => (
