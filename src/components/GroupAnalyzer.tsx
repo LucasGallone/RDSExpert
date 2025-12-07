@@ -1,3 +1,4 @@
+
 import React, { useRef, useEffect, useState } from 'react';
 import { RdsData } from '../types';
 
@@ -398,7 +399,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                 </div>
             )}
 
-            {/* DETAIL MODE */}
+            {/* DETAIL MODE (RDS Spy Style) */}
             {viewMode === 'DETAIL' && (
                 <div className="h-96 bg-black flex flex-col border-b border-slate-800">
                      <div className="p-2 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
@@ -474,8 +475,11 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                 
                 <div className="grid grid-cols-4 md:grid-cols-8 gap-2">
                     {ALL_GROUPS.map(grp => {
+                        const errorCount = data.groupCounts["--"] || 0;
+                        const validTotal = Math.max(0, data.groupTotal - errorCount);
+
                         const count = data.groupCounts[grp] || 0;
-                        const percentage = data.groupTotal > 0 ? ((count / data.groupTotal) * 100).toFixed(1) : "0.0";
+                        const percentage = validTotal > 0 ? ((count / validTotal) * 100).toFixed(1) : "0.0";
                         const hasData = count > 0;
                         
                         // Determine background style
