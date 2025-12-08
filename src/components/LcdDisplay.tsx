@@ -244,6 +244,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onRes
 
         {/* Service Flags (RT+, EON, TMC) - Right */}
         <div className="shrink-0 flex items-center justify-center gap-2 bg-slate-900/40 rounded p-2 border border-slate-800/50">
+            <FlagBadge active={data.hasOda} label="ODA" color="purple" />
             <FlagBadge active={data.hasRtPlus} label="RT+" color="green" />
             <FlagBadge active={data.hasEon} label="EON" color="yellow" />
             <FlagBadge active={data.hasTmc} label="TMC" alert />
@@ -316,7 +317,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onRes
   );
 };
 
-const FlagBadge: React.FC<{ active: boolean; label: string; alert?: boolean; color?: 'green' | 'yellow' }> = ({ active, label, alert, color }) => {
+const FlagBadge: React.FC<{ active: boolean; label: string; alert?: boolean; color?: 'green' | 'yellow' | 'purple' }> = ({ active, label, alert, color }) => {
   let activeClass = "text-blue-300 bg-blue-900/20 border-blue-500/50 shadow-[0_0_8px_rgba(59,130,246,0.3)]";
 
   if (alert) {
@@ -325,6 +326,8 @@ const FlagBadge: React.FC<{ active: boolean; label: string; alert?: boolean; col
       activeClass = "text-green-400 bg-green-900/20 border-green-500/50 shadow-[0_0_8px_rgba(34,197,94,0.3)]";
   } else if (color === 'yellow') {
       activeClass = "text-yellow-400 bg-yellow-900/20 border-yellow-500/50 shadow-[0_0_8px_rgba(234,179,8,0.3)]";
+  } else if (color === 'purple') {
+      activeClass = "text-purple-400 bg-purple-900/20 border-purple-500/50 shadow-[0_0_8px_rgba(168,85,247,0.3)]";
   }
   
   const inactiveClass = "text-slate-700 bg-slate-900/50 border-slate-800 opacity-50";
