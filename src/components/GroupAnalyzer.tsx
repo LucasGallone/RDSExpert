@@ -83,6 +83,10 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
   
   const [viewMode, setViewMode] = useState<ViewMode>('STREAM');
   
+  // Pause State
+  const [isPaused, setIsPaused] = useState(false);
+  const [frozenSequence, setFrozenSequence] = useState<string[]>([]);
+
   // Hex Viewer State
   const [hexCols, setHexCols] = useState<string[]>(["0A", "2A", "10A", "15A"]);
   // Use stable objects with IDs for logs to prevent rendering artifacts/jumping
@@ -107,28 +111,31 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
   };
 
   // Handle auto-scroll for main analyzer (Stream)
+  // Only scroll if active AND not paused
   useEffect(() => {
-    if (active && containerRef.current && viewMode === 'STREAM') {
+    if (active && !isPaused && containerRef.current && viewMode === 'STREAM') {
         scrollToBottom(containerRef.current);
     }
-  }, [data.groupSequence.length, active, viewMode]);
+  }, [data.groupSequence.length, active, viewMode, isPaused]);
 
   // Handle auto-scroll for Detail Viewer
   useEffect(() => {
-    if (viewMode === 'DETAIL' && detailLogRef.current) {
+    if (viewMode === 'DETAIL' && !isPaused && detailLogRef.current) {
         scrollToBottom(detailLogRef.current);
     }
-  }, [detailLogs, viewMode]);
+  }, [detailLogs, viewMode, isPaused]);
 
   // Handle auto-scroll for Hex Viewer columns
   useEffect(() => {
-      if (viewMode === 'HEX') {
+      if (viewMode === 'HEX' && !isPaused) {
           hexLogRefs.current.forEach(ref => scrollToBottom(ref));
       }
-  }, [hexLogs, viewMode]);
+  }, [hexLogs, viewMode, isPaused]);
 
   // Handle ODA Detection (Independent of View Mode)
   useEffect(() => {
+      if (isPaused) return; // Skip updates if paused
+
       if (data.recentGroups.length > 0) {
           data.recentGroups.forEach(grp => {
               if (grp.type === '3A') {
@@ -175,10 +182,12 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
               }
           });
       }
-  }, [data.recentGroups]);
+  }, [data.recentGroups, isPaused]);
 
   // Handle Incoming Data for Viewers
   useEffect(() => {
+    if (isPaused) return; // Skip updates if paused
+
     if ((viewMode === 'HEX' || viewMode === 'DETAIL') && data.recentGroups.length > 0) {
         
         if (viewMode === 'HEX') {
@@ -241,7 +250,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
             });
         }
     }
-  }, [data.recentGroups, viewMode, hexCols, detailGroup]);
+  }, [data.recentGroups, viewMode, hexCols, detailGroup, isPaused]);
 
   const toggleMode = (mode: ViewMode) => {
       if (viewMode === mode) {
@@ -249,6 +258,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
       } else {
           setViewMode(mode);
           // Clear logs when entering a new mode to avoid confusion
+          // Note: If paused, these will remain empty until unpaused or until manual clear
           if (mode === 'DETAIL') setDetailLogs([]);
           if (mode === 'HEX') setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
       }
@@ -268,10 +278,22 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
       setDetailLogs([]);
   };
 
-  // Reset internal ODA logs when reset is called from parent
+  const togglePause = () => {
+    if (!isPaused) {
+        // Pausing: Snapshot current sequence
+        setFrozenSequence(data.groupSequence);
+    }
+    setIsPaused(!isPaused);
+  };
+
+  // Reset internal ODA logs and Pause state when reset is called from parent
   useEffect(() => {
       if (data.groupTotal === 0) {
           setOdaLogs([]);
+          setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
+          setDetailLogs([]);
+          setIsPaused(false);
+          setFrozenSequence([]);
       }
   }, [data.groupTotal]);
 
@@ -279,6 +301,9 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
   useEffect(() => {
       setOdaLogs([]);
   }, [data.pi]);
+
+  // Determine what to display for Stream View
+  const displaySequence = isPaused ? frozenSequence : data.groupSequence;
 
   return (
     <div className={`border rounded-lg transition-all duration-300 overflow-hidden relative ${active ? 'bg-black border-slate-700' : 'bg-slate-900/30 border-slate-800'}`}>
@@ -290,8 +315,8 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
                 Groups Monitor
               </h3>
-              {active && viewMode === 'STREAM' && <span className="text-[10px] text-green-500 font-mono animate-pulse">● LIVE</span>}
-              {active && viewMode !== 'STREAM' && <span className="text-[10px] text-yellow-500 font-mono">● PAUSED (VIEWING DETAILS)</span>}
+              {active && !isPaused && <span className="text-[10px] text-green-500 font-mono animate-pulse">● LIVE</span>}
+              {active && isPaused && <span className="text-[10px] text-yellow-500 font-mono">● PAUSED</span>}
           </div>
           
           <div className="flex items-center gap-2">
@@ -318,6 +343,15 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
               >
                  Reset
               </button>
+
+              <button 
+                onClick={togglePause} 
+                disabled={!active}
+                className={`px-3 py-1 text-[10px] uppercase font-bold rounded border transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${isPaused ? 'bg-yellow-500/10 text-yellow-400 border-yellow-500/50 hover:bg-yellow-500/20' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'}`}
+              >
+                 {isPaused ? 'Resume' : 'Pause'}
+              </button>
+
               <button 
                  onClick={onToggle}
                  className={`px-3 py-1 text-[10px] uppercase font-bold rounded border transition-colors ${active ? 'bg-red-500/10 text-red-400 border-red-500/50 hover:bg-red-500/20' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'}`}
@@ -347,12 +381,12 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                     className="p-3 font-mono text-xs leading-5 break-all shadow-inner h-48 overflow-hidden bg-black text-slate-300 selection:bg-slate-700 border-b border-slate-800"
                 >
                     <div className="flex flex-wrap gap-y-1 content-start">
-                        {data.groupSequence.map((grp, i) => (
+                        {displaySequence.map((grp, i) => (
                             <span key={i} className={`font-bold inline-block w-8 text-center ${getGroupColor(grp)}`}>
                                 {grp}
                             </span>
                         ))}
-                        {data.groupSequence.length === 0 && <span className="text-slate-600 italic">Waiting for incoming groups...</span>}
+                        {displaySequence.length === 0 && <span className="text-slate-600 italic">Waiting for incoming groups...</span>}
                     </div>
                 </div>
             )}
@@ -375,14 +409,15 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                      </div>
                      
                      <div className="flex-1 overflow-y-auto p-4 font-mono text-xs custom-scrollbar bg-black" ref={detailLogRef}>
-                         {/* Header removed as requested */}
                          {detailLogs.map((item) => (
                              <div key={item.id} className="text-green-400 whitespace-pre hover:bg-slate-900/50">
                                  {item.text}
                              </div>
                          ))}
                          {detailLogs.length === 0 && (
-                             <div className="text-slate-700 italic text-center mt-10">Waiting for {detailGroup} groups...</div>
+                             <div className="text-slate-700 italic text-center mt-10">
+                                {isPaused ? 'Viewer Paused' : `Waiting for ${detailGroup} groups...`}
+                             </div>
                          )}
                      </div>
                 </div>
@@ -416,7 +451,9 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                                      </div>
                                  ))}
                                  {(!hexLogs[colIdx] || hexLogs[colIdx].length === 0) && (
-                                     <div className="text-slate-700 italic text-center mt-10">Waiting...</div>
+                                     <div className="text-slate-700 italic text-center mt-10">
+                                         {isPaused ? 'Paused' : 'Waiting...'}
+                                     </div>
                                  )}
                              </div>
                          </div>

@@ -1,6 +1,6 @@
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
-import { RdsData, ConnectionStatus, PTY_RDS, PTY_RBDS, RtPlusTag, EonNetwork, RawGroup, TmcMessage, TmcServiceInfo, PsHistoryItem, RtHistoryItem } from './types';
+import { RdsData, ConnectionStatus, PTY_RDS, PTY_RBDS, RtPlusTag, EonNetwork, RawGroup, TmcMessage, TmcServiceInfo, PsHistoryItem, RtHistoryItem, LogEntry } from './types';
 import { INITIAL_RDS_DATA, ODA_MAP } from './constants';
 import { LcdDisplay } from './components/LcdDisplay';
 import { InfoGrid } from './components/InfoGrid';
@@ -59,6 +59,7 @@ interface DecoderState {
   rtPlusItemToggle: boolean;
   hasOda: boolean;
   odaApp: { name: string; aid: string; group: string } | undefined;
+  odaList: { name: string; aid: string; group: string }[];
   hasRtPlus: boolean;
   hasEon: boolean;
   hasTmc: boolean;
@@ -88,12 +89,6 @@ interface DecoderState {
   
   psHistoryBuffer: PsHistoryItem[];
   rtHistoryBuffer: RtHistoryItem[];
-}
-
-interface LogEntry {
-    time: string;
-    message: string;
-    type: 'info' | 'success' | 'error' | 'warning';
 }
 
 // --- RDS Character Set Mapping (Custom Super-Hybrid Table) ---
@@ -378,6 +373,7 @@ const App: React.FC = () => {
     rtPlusItemToggle: false,
     hasOda: false,
     odaApp: undefined,
+    odaList: [], // Initialize list
     hasRtPlus: false,
     hasEon: false,
     hasTmc: false,
@@ -412,14 +408,14 @@ const App: React.FC = () => {
   const addLog = useCallback((message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
     setLogs(prev => {
         const entry: LogEntry = { time: new Date().toLocaleTimeString(), message, type };
-        return [entry, ...prev].slice(100);
+        return [entry, ...prev].slice(0, 100);
     });
   }, []);
 
   // Initial Log to verify system is working
   useEffect(() => {
     addLog("Ready. Waiting for a connection to a TEF webserver.", "info");
-  }, []); // Empty dependency array is intended here
+  }, [addLog]); 
 
   const updateBer = useCallback((isError: boolean) => {
     berHistoryRef.current.push(isError ? 1 : 0);
@@ -504,6 +500,7 @@ const App: React.FC = () => {
       state.rtPlusItemToggle = false;
       state.hasOda = false;
       state.odaApp = undefined;
+      state.odaList = []; // Reset ODA List
       state.hasRtPlus = false;
       state.hasEon = false;
       state.hasTmc = false;
@@ -591,6 +588,7 @@ const App: React.FC = () => {
             // Reset Flags on PI Change
             state.hasOda = false;
             state.odaApp = undefined;
+            state.odaList = []; // Reset ODA List
             state.hasRtPlus = false;
             state.hasEon = false;
             state.hasTmc = false;
@@ -1007,7 +1005,26 @@ const App: React.FC = () => {
         
         const odaName = ODA_MAP[aidHex] || "Unknown ODA";
         
-        state.odaApp = { name: odaName, aid: aidHex, group: targetGroup };
+        const newOda = { name: odaName, aid: aidHex, group: targetGroup };
+        
+        // Update Legacy Field (for compatibility)
+        state.odaApp = newOda;
+
+        // --- Multi-ODA List Management ---
+        // Check if AID exists
+        const existingIdx = state.odaList.findIndex(o => o.aid === aidHex);
+        
+        if (existingIdx !== -1) {
+             // AID exists, update the record (group might change)
+             state.odaList[existingIdx] = newOda;
+        } else {
+             // New AID, add to top
+             state.odaList.unshift(newOda);
+             // Keep max 5 items
+             if (state.odaList.length > 5) {
+                 state.odaList.pop();
+             }
+        }
 
         // AID for Radiotext+ is 4BD7
         if (g3 === 0x4BD7 || g4 === 0x4BD7) {
@@ -1237,7 +1254,8 @@ const App: React.FC = () => {
                 tp: state.tp, ta: state.ta, ms: state.ms, stereo: state.diStereo, artificialHead: state.diArtificialHead, compressed: state.diCompressed, dynamicPty: state.diDynamicPty,
                 ecc: state.ecc, lic: state.lic, pin: state.pin, localTime: state.localTime, utcTime: state.utcTime,
                 textAbFlag: state.abFlag, rtPlus: sortedRtPlusTags, rtPlusItemRunning: state.rtPlusItemRunning, rtPlusItemToggle: state.rtPlusItemToggle,
-                hasOda: state.hasOda, odaApp: state.odaApp, hasRtPlus: state.hasRtPlus, hasEon: state.hasEon, hasTmc: state.hasTmc,
+                hasOda: state.hasOda, odaApp: state.odaApp, odaList: [...state.odaList], // Pass new list
+                hasRtPlus: state.hasRtPlus, hasEon: state.hasEon, hasTmc: state.hasTmc,
                 eonData: eonDataObj,
                 tmcServiceInfo: {...state.tmcServiceInfo}, 
                 tmcMessages: [...state.tmcBuffer],
@@ -1398,6 +1416,8 @@ const App: React.FC = () => {
     }
   };
   const disconnect = () => { if (wsRef.current) { wsRef.current.close(); wsRef.current = null; } };
+  
+  // getLogColor moved outside component or defined here if simple
   const getLogColor = (type: LogEntry['type']) => { switch(type) { case 'success': return 'text-green-400 font-bold'; case 'error': return 'text-red-400 font-bold'; case 'warning': return 'text-yellow-400'; case 'info': return 'text-blue-300'; default: return 'text-slate-200'; } };
 
   return (

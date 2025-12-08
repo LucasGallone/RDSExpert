@@ -118,10 +118,10 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onRes
   const hasRtA = data.rtA && data.rtA.trim().length > 0;
   const hasRtB = data.rtB && data.rtB.trim().length > 0;
 
-  // Prepare ODA Tooltip
-  const odaTooltip = data.odaApp 
-    ? `${data.odaApp.name} [${data.odaApp.aid}] on Group ${data.odaApp.group}` 
-    : undefined;
+  // Prepare ODA Tooltip (Multiline)
+  const odaTooltip = data.odaList.length > 0
+    ? data.odaList.map(item => `${item.name} [${item.aid}] on Group ${item.group}`).join('\n')
+    : (data.odaApp ? `${data.odaApp.name} [${data.odaApp.aid}] on Group ${data.odaApp.group}` : undefined);
 
   return (
     <div className="bg-[#0f172a] border-4 border-slate-700 rounded-lg p-6 shadow-[0_0_20px_rgba(15,23,42,0.8)] relative overflow-hidden group">
@@ -362,7 +362,7 @@ const FlagBadge: React.FC<{ active: boolean; label: string; alert?: boolean; col
           {label}
         </span>
         {showTooltip && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-[10px] font-mono whitespace-nowrap rounded border border-slate-600 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-50 animate-in fade-in zoom-in-95 duration-200">
+            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-[10px] font-mono rounded border border-slate-600 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-50 animate-in fade-in zoom-in-95 duration-200 whitespace-pre text-left">
                 {tooltip}
                 <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-600"></div>
             </div>

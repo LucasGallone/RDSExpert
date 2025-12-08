@@ -10,7 +10,8 @@ export interface RdsData {
   rtPlusItemRunning: boolean; // RT+ Item Running Bit (Group 12A Block 2 Bit 4)
   rtPlusItemToggle: boolean;  // RT+ Item Toggle Bit (Group 12A Block 2 Bit 3)
   hasOda: boolean;     // Flag d'activité ODA (Latched)
-  odaApp?: { name: string; aid: string; group: string }; // Last detected ODA details
+  odaApp?: { name: string; aid: string; group: string }; // Last detected ODA details (Legacy)
+  odaList: { name: string; aid: string; group: string }[]; // List of up to 5 detected ODAs
   hasRtPlus: boolean;  // Flag d'activité RT+ (Latched)
   hasEon: boolean;     // Flag d'activité EON (Latched)
   hasTmc: boolean;     // Flag d'activité TMC (Latched)
@@ -48,6 +49,12 @@ export interface RdsData {
   // History
   psHistory: PsHistoryItem[];
   rtHistory: RtHistoryItem[];
+}
+
+export interface LogEntry {
+    time: string;
+    message: string;
+    type: 'info' | 'success' | 'error' | 'warning';
 }
 
 export interface PsHistoryItem {

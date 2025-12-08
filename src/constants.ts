@@ -56,6 +56,7 @@ export const INITIAL_RDS_DATA: RdsData = {
   rtPlusItemToggle: false,
   hasOda: false,
   odaApp: undefined,
+  odaList: [],
   hasRtPlus: false,
   hasEon: false,
   hasTmc: false,
