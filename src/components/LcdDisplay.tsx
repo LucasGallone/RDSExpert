@@ -1,6 +1,7 @@
 
 import React, { useState, useRef } from 'react';
 import { RdsData, PTY_RDS, PTY_RBDS } from '../types';
+import { ECC_COUNTRY_MAP, LIC_LANGUAGE_MAP } from '../constants';
 
 interface LcdDisplayProps {
   data: RdsData;
@@ -12,6 +13,14 @@ type UnderscoreMode = 'OFF' | 'ALL' | 'PS_ONLY' | 'RT_ONLY';
 
 export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onReset }) => {
   const [underscoreMode, setUnderscoreMode] = useState<UnderscoreMode>('OFF');
+  
+  // State for ECC Tooltip
+  const [showEccTooltip, setShowEccTooltip] = useState(false);
+  const eccTooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // State for LIC Tooltip
+  const [showLicTooltip, setShowLicTooltip] = useState(false);
+  const licTooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Cycle through modes: OFF -> ALL -> PS_ONLY -> RT_ONLY -> OFF
   const cycleMode = () => {
@@ -122,6 +131,64 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onRes
   const odaTooltip = data.odaList.length > 0
     ? data.odaList.map(item => `${item.name} [${item.aid}] on Group ${item.group}`).join('\n')
     : (data.odaApp ? `${data.odaApp.name} [${data.odaApp.aid}] on Group ${data.odaApp.group}` : undefined);
+
+  // ECC Country Logic
+  const getEccCountry = () => {
+      if (!data.ecc) return null;
+      const piFirst = data.pi && data.pi.length >= 1 ? data.pi.charAt(0).toUpperCase() : null;
+      const eccKey = data.ecc.toUpperCase();
+      
+      if (eccKey && piFirst && ECC_COUNTRY_MAP[eccKey] && ECC_COUNTRY_MAP[eccKey][piFirst]) {
+          return ECC_COUNTRY_MAP[eccKey][piFirst];
+      }
+      return "Not recognized!";
+  };
+  
+  const eccCountry = getEccCountry();
+
+  const handleEccMouseEnter = () => {
+    if (eccCountry) {
+      eccTooltipTimerRef.current = setTimeout(() => {
+        setShowEccTooltip(true);
+      }, 200);
+    }
+  };
+
+  const handleEccMouseLeave = () => {
+    if (eccTooltipTimerRef.current) {
+      clearTimeout(eccTooltipTimerRef.current);
+      eccTooltipTimerRef.current = null;
+    }
+    setShowEccTooltip(false);
+  };
+
+  // LIC Language Logic
+  const getLicLanguage = () => {
+      if (!data.lic) return null;
+      const licKey = data.lic.toUpperCase();
+      if (licKey && LIC_LANGUAGE_MAP[licKey]) {
+          return LIC_LANGUAGE_MAP[licKey];
+      }
+      return "Not recognized!";
+  };
+  
+  const licLanguage = getLicLanguage();
+
+  const handleLicMouseEnter = () => {
+    if (licLanguage) {
+      licTooltipTimerRef.current = setTimeout(() => {
+        setShowLicTooltip(true);
+      }, 200);
+    }
+  };
+
+  const handleLicMouseLeave = () => {
+    if (licTooltipTimerRef.current) {
+      clearTimeout(licTooltipTimerRef.current);
+      licTooltipTimerRef.current = null;
+    }
+    setShowLicTooltip(false);
+  };
 
   return (
     <div className="bg-[#0f172a] border-4 border-slate-700 rounded-lg p-6 shadow-[0_0_20px_rgba(15,23,42,0.8)] relative overflow-hidden group">
@@ -274,13 +341,37 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onRes
                )}
              </div>
         </div>
-        <div className="flex items-center space-x-2 bg-slate-900/40 rounded p-2 border border-slate-800/50 w-24 justify-center">
+        
+        {/* ECC Box with Tooltip */}
+        <div 
+          className="relative flex items-center space-x-2 bg-slate-900/40 rounded p-2 border border-slate-800/50 w-24 justify-center group/ecc cursor-default"
+          onMouseEnter={handleEccMouseEnter}
+          onMouseLeave={handleEccMouseLeave}
+        >
             <span className="text-[10px] font-bold text-slate-500 uppercase">ECC</span>
             <span className={`font-mono text-lg font-bold ${data.ecc ? 'text-white' : 'text-slate-600'}`}>{data.ecc || "--"}</span>
+            {showEccTooltip && eccCountry && (
+               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-[10px] font-mono rounded border border-slate-600 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-50 animate-in fade-in zoom-in-95 duration-200 whitespace-nowrap">
+                  {eccCountry}
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-600"></div>
+               </div>
+            )}
         </div>
-        <div className="flex items-center space-x-2 bg-slate-900/40 rounded p-2 border border-slate-800/50 w-24 justify-center">
+
+        {/* LIC Box with Tooltip */}
+        <div 
+          className="relative flex items-center space-x-2 bg-slate-900/40 rounded p-2 border border-slate-800/50 w-24 justify-center group/lic cursor-default"
+          onMouseEnter={handleLicMouseEnter}
+          onMouseLeave={handleLicMouseLeave}
+        >
             <span className="text-[10px] font-bold text-slate-500 uppercase">LIC</span>
             <span className={`font-mono text-lg font-bold ${data.lic ? 'text-white' : 'text-slate-600'}`}>{data.lic || "--"}</span>
+            {showLicTooltip && licLanguage && (
+               <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-[10px] font-mono rounded border border-slate-600 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-50 animate-in fade-in zoom-in-95 duration-200 whitespace-nowrap">
+                  {licLanguage}
+                  <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-600"></div>
+               </div>
+            )}
         </div>
       </div>
       
