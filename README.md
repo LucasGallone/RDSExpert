@@ -1,6 +1,6 @@
 # RDSExpert | Introduction
 
-RDSExpert is an advanced RDS (Radio Data System) decoder for TEF webservers.
+RDSExpert is an advanced RDS (Radio Data System) decoder for TEF webservers. It is also designed for RBDS (American variant).
 <br>
 <br>
 This tool will be of particular interest to radio engineers and anyone with an interest in radio engineering. Its purpose is to allow in-depth analysis of the RDS data carried by FM signals, which webservers cannot completely display for obvious usability reasons.
