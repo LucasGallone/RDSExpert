@@ -72,7 +72,7 @@ The other two have questionable usefulness nowadays and are even tending to disa
 There are also four flags above the `ECC` and `LIC` fields: `ODA` / `RT+` / `EON` / `TMC`.
 <br>
 <br>
-If the `ODA` flag (Open Data Applications) is active, it means that a secondary application is being used. To learn more, hover your mouse cursor over the flag, and information about the service will appear along with the group on which it is transmitted.
+If the `ODA` flag (Open Data Applications) is active, it means that a secondary application is being used. To learn more, hover your mouse cursor over the flag, and information about the service will appear along with the group on which it is transmitted. The integrated `ODA` database of RDSExpert allows the identification of about 70 different codes.
 <br>
 <br>
 The `RT+` flag indicates that the station is using the Radiotext+ function. You can view the transmitted information using the dedicated decoder located below.
@@ -170,7 +170,7 @@ The percentage is accompanied by the number of packets per group, which can be e
 <br>
 If an `ODA` application is detected on group 3A, a message appears at the top of the `Groups Monitor` window with the service ID, its 4-character code, and the group to which this data is being sent.
 <br>
-RDSExpert has an official database that allows it to recognize different `ODA` applications based on the code sent by group 3A. The tool can also display the code of an application that is not recognized (If it is not present in the database).
+RDSExpert has an official database of approximatively 70 different codes, allowing it to recognize different `ODA` applications based on the code sent by group 3A. The tool can also display the code of an application that is not recognized (If it is not present in the database).
 <br>
 <br>
 Clicking the `Show Groups Content` button allows you to view the content transmitted on a particular group in binary and ASCII formats.
