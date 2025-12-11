@@ -1,3 +1,4 @@
+
 import React, { useState } from 'react';
 import { RdsData, PTY_RDS, PTY_RBDS } from '../types';
 
@@ -91,7 +92,13 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, rdsStand
     if (eonKeys.length > 0) {
         eonKeys.forEach(key => {
             const net = data.eonData[key];
-            content += `  PI: ${net.pi} | PS: ${net.ps} | Freqs: [${net.af.join(', ')}]\n`;
+            content += `  PI: ${net.pi} | PS: ${net.ps}\n`;
+            if (net.af.length > 0) {
+                content += `    Freqs: [${net.af.join(', ')}]\n`;
+            }
+            if (net.mappedFreqs.length > 0) {
+                content += `    Mapped Freqs: [${net.mappedFreqs.join(', ')}]\n`;
+            }
         });
     } else {
         content += `  No EON data.\n`;
