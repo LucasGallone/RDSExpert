@@ -197,6 +197,9 @@ Click `Start` to begin scrolling through the different groups, along with percen
 The percentage is accompanied by the number of packets per group, which can be easily compared to the total number of decoded packets.
 <br>
 <br>
+You can easily find out what a group is for by placing your mouse cursor over it. A tooltip will appear with a description.
+<br>
+<br>
 If an `ODA` application is detected on group 3A, a message appears at the top of the `Groups Monitor` window with the service ID, its 4-character code, and the group to which this data is being sent.
 <br>
 RDSExpert has an official database of approximatively 70 different codes, allowing it to recognize different `ODA` applications based on the code sent by group 3A. The tool can also display the code of an application that is not recognized (If it is not present in the database).
