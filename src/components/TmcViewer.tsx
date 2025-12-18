@@ -22,7 +22,7 @@ export const TmcViewer: React.FC<TmcViewerProps> = ({ data, active, paused, onTo
     const selectedMsg = data.tmcMessages.find(m => m.id === selectedMsgId) || data.tmcMessages[0];
     
     const messagesCount = data.tmcMessages.length;
-    const messagesCountDisplay = messagesCount === 100 ? "100 (Max reached)" : messagesCount;
+    const messagesCountDisplay = messagesCount === 500 ? "500 (Max reached)" : messagesCount;
 
     return (
         <div className={`border rounded-lg transition-all duration-300 overflow-hidden flex flex-col ${active ? 'bg-slate-950 border-slate-700' : 'bg-slate-900/30 border-slate-800'}`}>
