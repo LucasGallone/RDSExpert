@@ -397,15 +397,35 @@ const getDurationLabel = (code: number): { label: string, minutes: number } => {
   }
 };
 
-const getEventNature = (code: number, diversion: boolean): string => {
+// Intelligence métier TMC : Détermination de la nature de l'événement
+const getEventNature = (code: number): string => {
+  if (code >= 1 && code <= 150) return "Traffic Flow";
+  if (code >= 200 && code <= 399) return "Accident/Incident";
+  if (code >= 400 && code <= 499) return "Closure";
+  if (code >= 500 && code <= 699) return "Lane Restriction";
+  if (code >= 700 && code <= 899) return "Roadworks";
+  if (code >= 900 && code <= 1000) return "Danger/Obstruction";
+  if (code >= 1001 && code <= 1100) return "Road Condition";
+  if (code >= 1101 && code <= 1400) return "Meteorological";
+  if (code >= 1401 && code <= 1600) return "Public Event";
+  if (code >= 1601 && code <= 2000) return "Service/Delay";
   return "Information"; 
+};
+
+// Intelligence métier TMC : Détermination de l'urgence
+const getEventUrgency = (code: number): string => {
+  if (code >= 900 && code <= 1000) return "High Priority";
+  if (code >= 200 && code <= 250) return "High Priority";
+  if (code >= 401 && code <= 410) return "High Priority";
+  if (code === 2) return "High Priority"; // Stationary traffic danger
+  return "Normal";
 };
 
 const getEventCategory = (code: number): string => {
   if (TMC_EVENT_MAP[code]) {
     return TMC_EVENT_MAP[code];
   }
-  return `[Unidentified event type] (Code: ${code})`;
+  return `Unidentified event [Code: ${code}]`;
 };
 
 const convertMjd = (mjd: number): { day: number, month: number, year: number } | null => {
@@ -480,6 +500,7 @@ const App: React.FC = () => {
     tp: false,
     ta: false,
     ms: false,
+    // Fix: provide initial false values instead of type annotations
     diStereo: false,
     diArtificialHead: false,
     diCompressed: false,
@@ -504,11 +525,17 @@ const App: React.FC = () => {
       providerName: "[Unavailable]" 
     },
     tmcBuffer: [], 
+    
+    // Analyzer State
     groupCounts: {},
     groupTotal: 0,
     groupSequence: [],
+    
+    // Fix: replaced type annotations with actual initial values in object literal
     graceCounter: GRACE_PERIOD_PACKETS,
     isDirty: false,
+    
+    // Raw Buffer for Hex Viewer
     rawGroupBuffer: [],
     piEstablishmentTime: 0,
     psHistoryLogged: false,
@@ -859,8 +886,10 @@ const App: React.FC = () => {
     } else if (groupTypeVal === 16) {
       state.hasTmc = true;
       if (tmcActiveRef.current && !tmcPausedRef.current) {
-        const tuningFlag = (g2 >> 4) & 0x01;
+        const tuningFlag = (g2 >> 4) & 0x01; // Bit T
+        
         if (tuningFlag === 1) {
+          // Message Système ( LTN, SID, AFI )
           const ltn = (g3 >> 10) & 0x3F;
           const sid = (g3 >> 2) & 0x3F;
           if (ltn > 0 || sid > 0) {
@@ -873,12 +902,25 @@ const App: React.FC = () => {
             };
           }
         } else {
+          // Message Utilisateur ( T=0 )
           const cc = g2 & 0x07;
+          
+          // Décodage des paramètres du Bloc 3
+          // Alert-C Standard (Single Message 11-bit): 
+          // B3: [Duration(3)][Diversion(1)][Direction(1)][Event(11)]
           const durationCode = (g3 >> 13) & 0x07;
+          const diversion = !!((g3 >> 12) & 0x01);
           const direction = !!((g3 >> 11) & 0x01);
-          const extent = (g3 >> 8) & 0x07;
-          const eventCode = ((g3 & 0xFF) << 3) | ((g4 >> 12) & 0x07); 
-          const location = g4 & 0x0FFF;
+          const eventCode = g3 & 0x07FF; 
+          
+          // Le Bloc 4 contient la localisation sur 16 bits
+          const location = g4; 
+          
+          // Filtre Filler (Remplissage) : On ignore si Event=0 ET Loc=0
+          if (eventCode === 0 && location === 0) {
+            return;
+          }
+
           const now = new Date();
           const durInfo = getDurationLabel(durationCode);
           let expiresTime = "--:--:--";
@@ -887,14 +929,22 @@ const App: React.FC = () => {
           } else if (durationCode === 7) {
             expiresTime = "Indefinite";
           }
+
+          // Mise à jour de l'urgence et de la nature de façon dynamique
+          const urgency = getEventUrgency(eventCode);
+          const nature = getEventNature(eventCode);
+
           const existingIndex = state.tmcBuffer.findIndex((m) => {
-            return m.locationCode === location && m.eventCode === eventCode && m.direction === direction && m.extent === extent;
+            return m.locationCode === location && m.eventCode === eventCode && m.direction === direction;
           });
+
           if (existingIndex !== -1) {
             const existing = state.tmcBuffer[existingIndex];
             existing.receivedTime = now.toLocaleTimeString('fr-FR');
             existing.expiresTime = expiresTime;
             existing.updateCount = (existing.updateCount || 1) + 1;
+            existing.urgency = urgency;
+            existing.nature = nature;
           } else {
             state.tmcBuffer.unshift({
               id: tmcIdCounter.current++,
@@ -905,12 +955,12 @@ const App: React.FC = () => {
               cc: cc,
               eventCode: eventCode,
               locationCode: location,
-              extent: extent,
+              extent: 0,
               durationCode: durationCode,
               direction: direction,
-              diversion: !!((g3 >> 12) & 0x01),
-              urgency: "Normal", 
-              nature: getEventNature(eventCode, !!((g3 >> 12) & 0x01)),
+              diversion: diversion,
+              urgency: urgency, 
+              nature: nature,
               durationLabel: durInfo.label,
               updateCount: 1
             });
@@ -1078,10 +1128,8 @@ const App: React.FC = () => {
         processTag(t2Id, (g4 >> 5) & 0x3F, g4 & 0x1F);
       }
       if (state.rtPlusTags.size > 6) {
-        // Fix: Explicitly cast Array.from result to handle unknown inference from Map iterator values
         const sortedTags = (Array.from(state.rtPlusTags.values()) as Array<RtPlusTag & { timestamp: number }>).sort((a, b) => a.timestamp - b.timestamp);
         while (state.rtPlusTags.size > 6) {
-          // Fix: shift() now returns RtPlusTag | undefined thanks to previous cast
           const oldestKey = sortedTags.shift()?.contentType;
           if (oldestKey !== undefined) {
             state.rtPlusTags.delete(oldestKey);
@@ -1201,7 +1249,6 @@ const App: React.FC = () => {
           localTime: state.localTime, 
           utcTime: state.utcTime, 
           textAbFlag: state.abFlag, 
-          // Fix: Explicitly cast Array.from result to RtPlusTag[] to avoid unknown type errors
           rtPlus: (Array.from(state.rtPlusTags.values()) as RtPlusTag[]).sort((a, b) => a.contentType - b.contentType), 
           rtPlusItemRunning: state.rtPlusItemRunning, 
           rtPlusItemToggle: state.rtPlusItemToggle,
