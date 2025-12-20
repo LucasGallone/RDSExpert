@@ -68,7 +68,12 @@ If the status shows `ERROR`, consult the `System Logs` section at the bottom of 
 💡 <b>Connecting to a server using the RDSExpert tool will not add an additional user to the server's counter.</b> The tool simply connects to the server's RDS websocket and does not allow any control over the tuning. This means that if you connect to the same server for tuning from a different tab/window while using RDSExpert in another, only one user will be counted.
 <br>
 <br>
-An extra note: If you are using a server located in America, consider changing the mode from "RDS" to "RBDS".
+💡 If you want to quickly connect to a webserver, it is possible to use the `?url=` parameter followed by the URL of the server.
+<br>
+Example: `https://lucasgallone.github.io/RDSExpert/?url=https://tuner.tef-server.org/`
+<br>
+<br>
+An extra note in case you are using a server located in America: Consider changing the mode from "RDS" to "RBDS".
 
 # Main information display
 
