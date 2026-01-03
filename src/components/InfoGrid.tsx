@@ -229,9 +229,9 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
 
                                         <div className="border border-slate-700 rounded p-2 bg-slate-950/30">
                                             <div className="text-slate-500 text-[10px] uppercase mb-1 font-bold">Mapped Frequencies</div>
-                                            <div className="flex flex-col gap-1">
+                                            <div className="grid grid-flow-col grid-rows-4 gap-x-4 gap-y-0.5">
                                                 {eon.mappedFreqs.length > 0 ? eon.mappedFreqs.map((mapStr, i) => (
-                                                    <span key={i} className="text-slate-300">{mapStr}</span>
+                                                    <span key={i} className="text-slate-300 whitespace-nowrap">{mapStr}</span>
                                                 )) : <span className="text-slate-600 italic">None</span>}
                                             </div>
                                         </div>
