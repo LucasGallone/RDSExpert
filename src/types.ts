@@ -210,3 +210,38 @@ export const PTY_RBDS = [
   "EMERGENCY TEST",
   "EMERGENCY"
 ];
+
+export const PTY_COMBINED = [
+  "None",
+  "News",
+  "Current Affairs | Information",
+  "Information | Sports",
+  "Sport | Talk",
+  "Education | Rock",
+  "Drama | Classic Rock",
+  "Culture | Adult Hits",
+  "Science | Soft Rock",
+  "Varied | Top 40",
+  "Pop Music | Country",
+  "Rock Music | Oldies",
+  "Easy Listening | Soft Music",
+  "Light Classical | Nostalgia",
+  "Serious Classical | Jazz",
+  "Other Music | Classical",
+  "Weather | Rhythm and Blues",
+  "Finance | Soft RnB",
+  "Children's Programmes | Language",
+  "Social Affairs | Religious Music",
+  "Religion | Religious Talk",
+  "Phone-in | Personality",
+  "Travel | Public",
+  "Leisure | College",
+  "Jazz Music | Spanish Talk",
+  "Country Music | Spanish Music",
+  "National Music | Hip-Hop",
+  "Oldies Music | Unassigned",
+  "Folk Music | Unassigned",
+  "Documentary | Weather",
+  "ALARM Test | EMERGENCY Test",
+  "ALARM! | EMERGENCY!"
+];
