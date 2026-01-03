@@ -1,16 +1,15 @@
 import React, { useState, useRef } from 'react';
-import { RdsData, PTY_RDS, PTY_RBDS } from '../types';
+import { RdsData, PTY_RDS, PTY_RBDS, PTY_COMBINED } from '../types';
 import { ECC_COUNTRY_MAP, LIC_LANGUAGE_MAP } from '../constants';
 
 interface LcdDisplayProps {
   data: RdsData;
-  rdsStandard: 'RDS' | 'RBDS';
   onReset: () => void;
 }
 
 type UnderscoreMode = 'OFF' | 'ALL' | 'PS_ONLY' | 'RT_ONLY';
 
-export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onReset }) => {
+export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset }) => {
   const [underscoreMode, setUnderscoreMode] = useState<UnderscoreMode>('OFF');
   
   // State for ECC Tooltip
@@ -118,9 +117,8 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onRes
   const hasLongPs = data.longPs && data.longPs.trim().length > 0;
   const hasPtyn = data.ptyn && data.ptyn.trim().length > 0;
   
-  // Resolve PTY Name based on selected standard
-  const ptyList = rdsStandard === 'RDS' ? PTY_RDS : PTY_RBDS;
-  const currentPtyName = ptyList[data.pty] || "Unknown";
+  // Resolve PTY Name based on hybrid standard
+  const currentPtyName = PTY_COMBINED[data.pty] || "Unknown";
 
   // Check if we actually have RT groups received to determine if indicators should be lit
   const isRtActive = (data.groupCounts['2A'] || 0) > 0 || (data.groupCounts['2B'] || 0) > 0;
@@ -288,7 +286,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onRes
           <div className="w-full flex-1 min-w-0 bg-slate-800/30 rounded py-2 px-4 min-h-[56px] flex items-center relative overflow-x-auto no-scrollbar">
              {/* Selection Border: Active if flag is B AND has content */}
              {data.textAbFlag && hasRtB && <div className="absolute inset-0 border border-blue-500/30 rounded pointer-events-none"></div>}
-             <span className="font-mono text-lg md:text-2xl text-slate-200 whitespace-pre leading-tight shrink-0">
+             <span className="font-mono text-lg md:text-2xl text-slate-200 whitespace-pre shrink-0">
                <RenderEnhancedText text={data.rtB} type="rt" />
              </span>
           </div>
@@ -309,8 +307,8 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onRes
 
         {/* Combined PTY & PTYN Wrapper - Grouped for mobile alignment (order-2 on mobile, md:order-1 on PC) */}
         <div className="order-2 md:order-1 flex flex-row gap-4 flex-1 md:flex-[2.3] items-stretch">
-          {/* PTY (RDS | RBDS) - Left */}
-          <div className="flex-1 md:flex-[1.3] flex items-center space-x-3 bg-slate-900/40 rounded p-2 border border-slate-800/50 overflow-x-auto no-scrollbar">
+          {/* PTY (Hybrid) - Left */}
+          <div className="flex-[0.9] md:flex-[1.2] flex items-center space-x-3 bg-slate-900/40 rounded p-2 border border-slate-800/50 overflow-x-auto no-scrollbar">
              <span className="text-[10px] font-bold text-slate-500 uppercase px-1 shrink-0">PTY</span>
              <span className="font-mono text-lg text-white tracking-wide shrink-0">
                {currentPtyName} <span className="text-slate-500 text-sm">[{data.pty}]</span>
@@ -318,7 +316,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, rdsStandard, onRes
           </div>
 
           {/* PTYN - Center */}
-          <div className="flex-1 md:flex-1 flex items-center space-x-3 bg-slate-900/40 rounded p-2 border border-slate-800/50 overflow-x-auto no-scrollbar">
+          <div className="flex-[0.4] md:flex-[0.5] flex items-center space-x-3 bg-slate-900/40 rounded p-2 border border-slate-800/50 overflow-x-auto no-scrollbar">
              <span className="text-[10px] font-bold text-slate-500 uppercase px-1 shrink-0">PTYN</span>
              <span className="font-mono text-lg text-white tracking-wide whitespace-pre shrink-0">
                 {(hasPtyn) ? <RenderEnhancedText text={data.ptyn} type="ptyn" /> : <span className="text-slate-600 italic text-sm">No Data</span>}
