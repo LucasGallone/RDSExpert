@@ -1,13 +1,11 @@
-
 import React, { useState } from 'react';
-import { RdsData, PTY_RDS, PTY_RBDS } from '../types';
+import { RdsData, PTY_RDS, PTY_RBDS, PTY_COMBINED } from '../types';
 
 interface InfoGridProps {
   data: RdsData;
-  rdsStandard: 'RDS' | 'RBDS';
 }
 
-export const InfoGrid: React.FC<InfoGridProps> = ({ data, rdsStandard }) => {
+export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
   const [sortAf, setSortAf] = useState(false);
   const [expandedHeader, setExpandedHeader] = useState<string | null>(null);
   const [expandedEon, setExpandedEon] = useState<string | null>(null);
@@ -110,8 +108,8 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data, rdsStandard }) => {
   // EON Data Preparation
   const eonKeys = Object.keys(data.eonData).sort();
   
-  // Resolve PTY list based on standard
-  const ptyList = rdsStandard === 'RDS' ? PTY_RDS : PTY_RBDS;
+  // Resolve PTY list based on hybrid standard
+  const currentPtyName = (pty: number) => PTY_COMBINED[pty] || "None";
 
   return (
     <div className="w-full space-y-4">
@@ -247,7 +245,7 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data, rdsStandard }) => {
                                         </div>
                                         <div className="flex justify-between items-center border-b border-slate-800 pb-1">
                                             <span className="text-slate-500">PTY</span>
-                                            <span className="text-white">{ptyList[eon.pty] || "None"} <span className="text-slate-600">[{eon.pty}]</span></span>
+                                            <span className="text-white">{currentPtyName(eon.pty)} <span className="text-slate-600">[{eon.pty}]</span></span>
                                         </div>
                                         <div className="flex justify-between items-center border-b border-slate-800 pb-1">
                                             <span className="text-slate-500">TP</span>
