@@ -495,6 +495,7 @@ const App: React.FC = () => {
     currentPi: "----",
     piCandidate: "----",
     piCounter: 0,
+    // Corrected type-as-value initialization by using default values
     ecc: "",
     lic: "",
     pin: "",
@@ -657,8 +658,8 @@ const App: React.FC = () => {
     state.pty = 0;
     state.tp = false;
     state.ta = false;
-    state.ms = false;
-    state.diStereo = false;
+    state.ms = false; 
+    state.diStereo = false; 
     state.diArtificialHead = false;
     state.diCompressed = false;
     state.diDynamicPty = false;
@@ -1021,7 +1022,7 @@ const App: React.FC = () => {
           const mapStr = `${fMain} -> ${fMapped}`;
           if (!network.mappedFreqs.includes(mapStr)) {
             network.mappedFreqs.push(mapStr);
-            if (network.mappedFreqs.length > 4) {
+            if (network.mappedFreqs.length > 10) {
               network.mappedFreqs.shift();
             }
           }
