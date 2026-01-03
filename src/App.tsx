@@ -458,7 +458,6 @@ const App: React.FC = () => {
   const [logs, setLogs] = useState<LogEntry[]>([]);
   const [lastRawPacket, setLastRawPacket] = useState<string>("Waiting for data...");
   const [packetCount, setPacketCount] = useState<number>(0);
-  const [rdsStandard, setRdsStandard] = useState<'RDS' | 'RBDS'>('RDS');
   const [showSecurityError, setShowSecurityError] = useState<boolean>(false);
   const [analyzerActive, setAnalyzerActive] = useState<boolean>(false);
   const analyzerActiveRef = useRef<boolean>(false);
@@ -475,6 +474,7 @@ const App: React.FC = () => {
   const BER_WINDOW_SIZE = 40; 
   const GRACE_PERIOD_PACKETS = 10; 
 
+  // Correct initialization of DecoderState with proper initial values
   const decoderState = useRef<DecoderState>({
     psBuffer: new Array(8).fill(' '),  
     psMask: new Array(8).fill(false),
@@ -539,6 +539,7 @@ const App: React.FC = () => {
     
     // Raw Buffer for Hex Viewer
     rawGroupBuffer: [],
+    
     piEstablishmentTime: 0,
     psHistoryLogged: false,
     psCandidateString: "        ",
@@ -620,6 +621,7 @@ const App: React.FC = () => {
     state.psHistoryLogged = false;
 
     state.psBuffer.fill(' ');
+    state.psMask.fill(false);
     state.lpsBuffer.fill(' ');
     state.ptynBuffer.fill(' ');
     state.rtBuffer0.fill(' ');
@@ -630,7 +632,7 @@ const App: React.FC = () => {
     state.rtStableSince = 0;
 
     state.afSet = [];
-    // Fix: Changed colon to equals for property assignment
+    // Corrected assignment from colon to equals
     state.afListHead = null;
     state.afBMap.clear();
     state.currentMethodBGroup = null;
@@ -678,6 +680,9 @@ const App: React.FC = () => {
     berHistoryRef.current = [];
     state.graceCounter = GRACE_PERIOD_PACKETS;
     
+    // Fixed: reset rawGroupBuffer correctly
+    state.rawGroupBuffer = [];
+    
     state.isDirty = true;
   }, []);
 
@@ -709,7 +714,7 @@ const App: React.FC = () => {
         state.rtStableSince = 0;
 
         state.afSet = [];
-        // Fix: Changed colon to equals for property assignment
+        // Corrected assignment from colon to equals
         state.afListHead = null;
         state.afBMap.clear();
         state.currentMethodBGroup = null;
@@ -838,6 +843,7 @@ const App: React.FC = () => {
             const headFreq = decodeAf(af2);
             if (headFreq) {
               processMethodAFreq(headFreq);
+              // Corrected assignment from colon to equals
               state.afListHead = headFreq;
               const headIdx = state.afSet.indexOf(headFreq);
               if (headIdx > 0) {
@@ -1497,17 +1503,6 @@ const App: React.FC = () => {
                   <span>PACKETS</span> 
                   <span className="text-slate-200">{packetCount.toLocaleString()}</span>
                 </div>
-                
-                <div className="flex-1 md:flex-none shrink-0">
-                  <select 
-                    value={rdsStandard} 
-                    onChange={(e) => setRdsStandard(e.target.value as 'RDS' | 'RBDS')} 
-                    className="w-full bg-slate-900/50 border border-slate-800 text-slate-300 text-[10px] md:text-xs font-mono rounded p-1.5 md:p-2 focus:outline-none focus:border-blue-500 cursor-pointer h-full"
-                  >
-                    <option value="RDS">RDS MODE</option>
-                    <option value="RBDS">RBDS MODE</option>
-                  </select>
-                </div>
             </div>
             
             <div className="flex items-center gap-2 flex-1">
@@ -1542,9 +1537,9 @@ const App: React.FC = () => {
         </div>
         
         <div className="space-y-6">
-           <LcdDisplay data={rdsData} rdsStandard={rdsStandard} onReset={resetData} />
-           <HistoryControls data={rdsData} rdsStandard={rdsStandard} />
-           <InfoGrid data={rdsData} rdsStandard={rdsStandard} />
+           <LcdDisplay data={rdsData} onReset={resetData} />
+           <HistoryControls data={rdsData} />
+           <InfoGrid data={rdsData} />
            <GroupAnalyzer data={rdsData} active={analyzerActive} onToggle={toggleAnalyzer} onReset={resetAnalyzer} />
            <TmcViewer 
               data={rdsData} 
