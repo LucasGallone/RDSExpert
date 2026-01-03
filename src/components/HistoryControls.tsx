@@ -1,19 +1,18 @@
 import React, { useState } from 'react';
-import { RdsData, PTY_RDS, PTY_RBDS, PsHistoryItem, RtHistoryItem } from '../types';
+import { RdsData, PTY_RDS, PTY_RBDS, PTY_COMBINED, PsHistoryItem, RtHistoryItem } from '../types';
 
 interface HistoryControlsProps {
   data: RdsData;
-  rdsStandard: 'RDS' | 'RBDS';
 }
 
-export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, rdsStandard }) => {
+export const HistoryControls: React.FC<HistoryControlsProps> = ({ data }) => {
   const [showPsHistory, setShowPsHistory] = useState(false);
   const [showRtHistory, setShowRtHistory] = useState(false);
   const [showExportModal, setShowExportModal] = useState(false);
   const [exportContent, setExportContent] = useState('');
 
-  // Resolve PTY list
-  const ptyList = rdsStandard === 'RDS' ? PTY_RDS : PTY_RBDS;
+  // Resolve PTY list using hybrid standard
+  const ptyList = PTY_COMBINED;
 
   // --- EXPORT LOGIC ---
 
@@ -37,7 +36,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, rdsStand
     content += `------------------------\n`;
     content += `PI:           ${data.pi}\n`;
     content += `PS:           ${psFormatted}\n`;
-    content += `PTY:          ${ptyName}\n`;
+    content += `PTY:          ${ptyName} [${data.pty}]\n`;
     const ptynRaw = (data.ptyn || "").replace(/\r/g, '');
     content += `PTYN:         ${ptynRaw.trim() ? ptynRaw : "N/A"}\n`;
     const lpsRaw = (data.longPs || "").replace(/\r/g, '');
@@ -130,7 +129,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, rdsStand
     content += `[9] PS / PTY HISTORY\n`;
     content += `--------------------\n`;
     [...data.psHistory].reverse().forEach(h => {
-        content += `  [${h.time}] ${h.ps} (PTY: ${h.pty})\n`;
+        content += `  [${h.time}] ${h.ps.replace(/ /g, '_')} (PTY: ${ptyList[h.pty] || h.pty})\n`;
     });
 
     return content;
@@ -176,7 +175,8 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, rdsStand
                 title="PS / PTY HISTORY (LIMITED TO 200 ENTRIES)"
                 onClose={() => setShowPsHistory(false)}
                 data={data.psHistory}
-                getCopyText={(item: PsHistoryItem) => `[${item.time}] ${item.ps}`}
+                getCopyText={(item: PsHistoryItem, u: boolean) => `[${item.time}] ${u ? item.ps.replace(/ /g, '_') : item.ps}`}
+                /* Removed duplicate attribute from line 186 to fix JSX error */
                 renderHeader={() => (
                     <tr className="border-b border-slate-700 text-slate-500 bg-slate-900 sticky top-0 z-10">
                         <th className="p-3 w-24">Time</th>
@@ -184,11 +184,11 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, rdsStand
                         <th className="p-3">PTY</th>
                     </tr>
                 )}
-                renderRow={(item: PsHistoryItem, i) => (
+                renderRow={(item: PsHistoryItem, i, u: boolean) => (
                     <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
                         <td className="p-3 text-slate-400 border-r border-slate-800/50">{item.time}</td>
                         <td className="p-3 border-r border-slate-800/50">
-                            <span className="text-white font-bold tracking-widest whitespace-pre bg-slate-800 px-2 py-1 rounded shadow-sm">{item.ps}</span>
+                            <span className="text-white font-bold tracking-widest whitespace-pre bg-slate-800 px-2 py-1 rounded shadow-sm">{u ? item.ps.replace(/ /g, '_') : item.ps}</span>
                         </td>
                         <td className="p-3 text-slate-400">
                             {ptyList[item.pty] || "Unknown"} <span className="text-xs opacity-50 ml-1">[{item.pty}]</span>
@@ -197,6 +197,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, rdsStand
                 )}
                 emptyMessage="No PS / PTY data recorded for now."
                 copyReverse={true}
+                allowUnderscoreToggle={true}
             />
         )}
 
@@ -243,16 +244,18 @@ interface HistoryViewerProps<T> {
     data: T[];
     onClose: () => void;
     renderHeader: () => React.ReactNode;
-    renderRow: (item: T, index: number) => React.ReactNode;
-    getCopyText: (item: T) => string;
+    renderRow: (item: T, index: number, useUnderscores: boolean) => React.ReactNode;
+    getCopyText: (item: T, useUnderscores: boolean) => string;
     emptyMessage: string;
     copyReverse?: boolean;
+    allowUnderscoreToggle?: boolean;
 }
 
-const HistoryViewer = <T extends any>({ title, data, onClose, renderHeader, renderRow, getCopyText, emptyMessage, copyReverse }: HistoryViewerProps<T>) => {
+const HistoryViewer = <T extends any>({ title, data, onClose, renderHeader, renderRow, getCopyText, emptyMessage, copyReverse, allowUnderscoreToggle }: HistoryViewerProps<T>) => {
     const [paused, setPaused] = useState(false);
     const [frozenData, setFrozenData] = useState<T[]>([]);
     const [copyStatus, setCopyStatus] = useState<'IDLE' | 'COPIED'>('IDLE');
+    const [useUnderscores, setUseUnderscores] = useState(true);
 
     // Display frozen data if paused, otherwise live data
     const displayData = paused ? frozenData : data;
@@ -270,7 +273,7 @@ const HistoryViewer = <T extends any>({ title, data, onClose, renderHeader, rend
         if (copyReverse) {
             itemsToCopy.reverse();
         }
-        const text = itemsToCopy.map(getCopyText).join('\n');
+        const text = itemsToCopy.map(item => getCopyText(item, useUnderscores)).join('\n');
         navigator.clipboard.writeText(text).then(() => {
             setCopyStatus('COPIED');
             setTimeout(() => setCopyStatus('IDLE'), 2000);
@@ -316,6 +319,26 @@ const HistoryViewer = <T extends any>({ title, data, onClose, renderHeader, rend
                      </>
                  )}
              </button>
+
+             {/* Underscores Toggle Button */}
+             {allowUnderscoreToggle && (
+                 <button 
+                    onClick={() => setUseUnderscores(!useUnderscores)}
+                    className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors uppercase flex items-center gap-1.5 ${useUnderscores ? 'bg-blue-900/40 text-blue-400 border-blue-600 hover:bg-blue-900/60' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'}`}
+                 >
+                    {useUnderscores ? (
+                        <>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                            UNDERSCORES ON
+                        </>
+                    ) : (
+                        <>
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                            UNDERSCORES OFF
+                        </>
+                    )}
+                 </button>
+             )}
         </div>
     );
 
@@ -326,7 +349,7 @@ const HistoryViewer = <T extends any>({ title, data, onClose, renderHeader, rend
                     {renderHeader()}
                 </thead>
                 <tbody>
-                    {displayData.map((item, i) => renderRow(item, i))}
+                    {displayData.map((item, i) => renderRow(item, i, useUnderscores))}
                     {displayData.length === 0 && (
                         <tr><td colSpan={10} className="p-6 text-center text-slate-500 italic">{emptyMessage}</td></tr>
                     )}
