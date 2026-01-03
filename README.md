@@ -73,7 +73,7 @@ If the status shows `ERROR`, consult the `System Logs` section at the bottom of 
 Example: `https://lucasgallone.github.io/RDSExpert/?url=https://tuner.tef-server.org/`
 <br>
 <br>
-An extra note in case you are using a server located in America: Consider changing the mode from "RDS" to "RBDS".
+An extra note in case you are using a server located in North America: Consider changing the mode from "RDS" to "RBDS".
 
 # Main information display
 
