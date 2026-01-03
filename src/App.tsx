@@ -1431,7 +1431,7 @@ const App: React.FC = () => {
       setStatus(ConnectionStatus.ERROR); 
       let msg = e instanceof Error ? e.message : String(e); 
       if (msg.includes("insecure")) { 
-        msg = "Insecure connection blocked by browser."; 
+        msg = "This version cannot connect to HTTP servers. Please follow the on-screen instructions."; 
         setShowSecurityError(true); 
       } 
       addLog(`Connection Failed: ${msg}`, 'error'); 
@@ -1517,7 +1517,7 @@ const App: React.FC = () => {
                   value={serverUrl} 
                   onChange={(e) => setServerUrl(e.target.value)} 
                   onKeyDown={(e) => e.key === 'Enter' && connect()} 
-                  placeholder="Indicate the webserver URL here (HTTPS only!)" 
+                  placeholder="Indicate the webserver URL here" 
                   className="relative w-full bg-slate-950 border border-slate-800 text-slate-200 text-sm rounded px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 placeholder:text-slate-600 font-mono" 
                 />
               </div>
