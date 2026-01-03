@@ -24,7 +24,7 @@
 
 RDSExpert is an advanced RDS (Radio Data System) decoder for TEF webservers, based on HTML and TypeScript.
 <br>
-It is also designed for RBDS (American variant).
+It is also designed for RBDS (RDS variant for North America).
 <br>
 <br>
 -> [You can access the interface by clicking on this link.](https://lucasgallone.github.io/RDSExpert)
@@ -71,9 +71,6 @@ If the status shows `ERROR`, consult the `System Logs` section at the bottom of 
 💡 If you want to quickly connect to a webserver, it is possible to use the `?url=` parameter followed by the URL of the server.
 <br>
 Example: `https://lucasgallone.github.io/RDSExpert/?url=https://tuner.tef-server.org/`
-<br>
-<br>
-An extra note in case you are using a server located in North America: Consider changing the mode from "RDS" to "RBDS".
 
 # Main information display
 
@@ -86,7 +83,7 @@ An extra note in case you are using a server located in North America: Consider 
 | `PS` | `Program Service` <br> <br> Displays the station name, with a 8 characters limit. It can be dynamic (Multiple text sequences transmitted gradually). |
 | `BER` | `Bit Error Rate` <br> <br> Calculates the error rate of the station's RDS decoding. <br> The closer this level is to 0%, the better the decoding is. <br> <br> The indicator is green when decoding is excellent or relatively good. <br> Orange when decoding becomes average or difficult. <br> Red when decoding becomes poor or very poor. |
 | `RT A` <br> `RT B` | This function shows the two lines used by the `Radiotext` function, which is generally used to display the radio station's slogan, the title of the song which is currently aired, or other information about the station that may be useful to the listeners. <br> It is limited to 64 characters per line. <br> <br> In addition to displaying text, RDSExpert is able to show the "invisible" codes that allow the Radiotext decoding to be interrupted before it reaches 64 characters (Example: <0D>). |
-| `PTY` | `Program Type` <br> <br> Indicates the type of program broadcast by the station (For example: Pop Music / Rock Music / Easy Listening / Oldies Music / News / …). <br> <br> The display of this information varies depending on whether you are using RDS or RBDS mode. This is why it is important to select RBDS mode if you are connecting to a server located in America. |
+| `PTY` | `Program Type` <br> <br> Indicates the type of program broadcast by the station. (For example: Pop Music / Rock Music / Easy Listening / Oldies Music / News / …) <br> <br> Both RDS and RBDS values are displayed, separated by a vertical line. <br> The value on the left is in RDS format, and the value on the right is in RBDS format. |
 | `PTYN` | Has the same function as `PTY`, with the sole difference that it is fully customizable. <br> This means that an engineer can specify the text/value of his choice (limited to 8 characters) via group 10A. |
 | `Long PS` | Has the same function as `PS`, but in a much extended range. This allows to display the name of a station which is longer than 8 characters (maximum 32 characters), via group 15A. <br> <br> This function is generally very rarely used. |
 | `ECC` | `Extended Country Code` <br> <br> A two-character code identifying the country from which the station broadcasts (Example: E1 for France). <br> Place your mouse cursor over the `ECC` box to find out which country the code is assigned to. <br> <br> This function is rarely used. |
