@@ -535,7 +535,6 @@ const App: React.FC = () => {
     groupSequence: [],
     
     graceCounter: GRACE_PERIOD_PACKETS,
-    /* Fixed: Changed 'boolean' type to 'false' value and changed semicolon to comma */
     isDirty: false,
     
     // Raw Buffer for Hex Viewer
@@ -631,6 +630,7 @@ const App: React.FC = () => {
     state.rtStableSince = 0;
 
     state.afSet = [];
+    // Fix: Changed colon to equals for property assignment
     state.afListHead = null;
     state.afBMap.clear();
     state.currentMethodBGroup = null;
@@ -675,7 +675,7 @@ const App: React.FC = () => {
     state.psCandidateString = "        ";
     state.psStableSince = 0;
 
-    berHistoryRef.current = new Array(BER_WINDOW_SIZE).fill(0);
+    berHistoryRef.current = [];
     state.graceCounter = GRACE_PERIOD_PACKETS;
     
     state.isDirty = true;
@@ -709,6 +709,7 @@ const App: React.FC = () => {
         state.rtStableSince = 0;
 
         state.afSet = [];
+        // Fix: Changed colon to equals for property assignment
         state.afListHead = null;
         state.afBMap.clear();
         state.currentMethodBGroup = null;
@@ -759,7 +760,7 @@ const App: React.FC = () => {
         state.psCandidateString = "        ";
         state.psStableSince = 0;
 
-        berHistoryRef.current = new Array(BER_WINDOW_SIZE).fill(0);
+        berHistoryRef.current = [];
         state.graceCounter = GRACE_PERIOD_PACKETS;
       }
     }
@@ -1270,7 +1271,7 @@ const App: React.FC = () => {
           afListHead: state.afListHead, 
           afBLists: afBLists, 
           afType: state.afType, 
-          ber: state.graceCounter > 0 ? 0 : cBer,
+          ber: (state.currentPi !== "----" && (now - state.piEstablishmentTime) >= 3000 && berHistoryRef.current.length > 0) ? cBer : -1,
           groupCounts: { ...state.groupCounts }, 
           groupTotal: state.groupTotal, 
           groupSequence: analyzerActiveRef.current ? [...state.groupSequence] : prev.groupSequence, 
@@ -1380,10 +1381,8 @@ const App: React.FC = () => {
               if (typeof j.g1 === 'number') { 
                 decodeRdsGroup(j.g1, j.g2, j.g3, j.g4); 
                 packetCountRef.current++; 
-                if (decoderState.current.graceCounter === 0) {
+                if (decoderState.current.currentPi !== "----" && (Date.now() - decoderState.current.piEstablishmentTime) >= 3000) {
                   updateBer(false); 
-                } else {
-                  decoderState.current.graceCounter--;
                 }
               } 
             } catch(e) {} 
@@ -1394,7 +1393,10 @@ const App: React.FC = () => {
           if (m && m.index !== undefined) { 
             const b = [m[1], m[2], m[3], m[4]]; 
             if (b.some((x) => x.includes('-'))) { 
-              packetCountRef.current++; updateBer(true); 
+              packetCountRef.current++; 
+              if (decoderState.current.currentPi !== "----" && (Date.now() - decoderState.current.piEstablishmentTime) >= 3000) {
+                updateBer(true); 
+              }
               const s = decoderState.current; 
               s.groupTotal++;
               s.groupCounts["--"] = (s.groupCounts["--"] || 0) + 1; 
@@ -1407,10 +1409,8 @@ const App: React.FC = () => {
               if (!isNaN(g1)) { 
                 decodeRdsGroup(g1, parseInt(b[1], 16), parseInt(b[2], 16), parseInt(b[3], 16)); 
                 packetCountRef.current++; 
-                if (decoderState.current.graceCounter === 0) {
+                if (decoderState.current.currentPi !== "----" && (Date.now() - decoderState.current.piEstablishmentTime) >= 3000) {
                   updateBer(false); 
-                } else {
-                  decoderState.current.graceCounter--;
                 }
               } 
             } 
@@ -1420,7 +1420,7 @@ const App: React.FC = () => {
           }
         }
         if (lineBufferRef.current.length > 500) { 
-          if (decoderState.current.graceCounter === 0) {
+          if (decoderState.current.currentPi !== "----" && (Date.now() - decoderState.current.piEstablishmentTime) >= 3000) {
             updateBer(true); 
           }
           lineBufferRef.current = lineBufferRef.current.substring(250); 
