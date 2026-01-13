@@ -1,4 +1,3 @@
-
 import React, { useState } from 'react';
 import { RdsData, PTY_RDS, PTY_RBDS, PTY_COMBINED, PsHistoryItem, RtHistoryItem } from '../types';
 
@@ -128,10 +127,49 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data }) => {
 
     // 9. PS, PTY and PTYN History
     content += `[9] PS / PTY / PTYN HISTORY\n`;
-    content += `--------------------------\n`;
-    [...data.psHistory].reverse().forEach(h => {
-        content += `  [${h.time}] PS: ${h.ps.replace(/ /g, '_')} | PTY: ${ptyList[h.pty] || h.pty} | PTYN: ${h.ptyn.trim() ? h.ptyn : "N/A"}\n`;
-    });
+    content += `---------------------------\n`;
+    
+    const psHistory = [...data.psHistory].reverse();
+
+    content += `• PS History •\n`;
+    if (psHistory.length > 0) {
+        psHistory.forEach(h => {
+            content += `[${h.time}] ${h.ps.replace(/ /g, '_')}\n`;
+        });
+    } else {
+        content += `No data decoded...\n`;
+    }
+    content += `\n`;
+
+    content += `• PTY History •\n`;
+    if (psHistory.length > 0) {
+        let lastPtyValue = "";
+        psHistory.forEach(h => {
+            const currentPtyValue = ptyList[h.pty] || h.pty.toString();
+            if (currentPtyValue !== lastPtyValue) {
+                content += `[${h.time}] ${currentPtyValue}\n`;
+                lastPtyValue = currentPtyValue;
+            }
+        });
+    } else {
+        content += `No data decoded...\n`;
+    }
+    content += `\n`;
+
+    content += `• PTYN History •\n`;
+    const ptynEntries = psHistory.filter(h => h.ptyn && h.ptyn.trim().length > 0);
+    if (ptynEntries.length > 0) {
+        let lastPtynValue = "";
+        ptynEntries.forEach(h => {
+            const currentPtynValue = h.ptyn;
+            if (currentPtynValue !== lastPtynValue) {
+                content += `[${h.time}] ${currentPtynValue}\n`;
+                lastPtynValue = currentPtynValue;
+            }
+        });
+    } else {
+        content += `No data decoded...\n`;
+    }
 
     return content;
   };
@@ -179,9 +217,29 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data }) => {
                 getCopyText={(item: PsHistoryItem, u: boolean) => `[${item.time}] PS: ${u ? item.ps.replace(/ /g, '_') : item.ps} | PTY: ${ptyList[item.pty] || item.pty} | PTYN: ${item.ptyn}`}
                 fullCopyFormatter={(items: PsHistoryItem[], u: boolean) => {
                     const psLines = items.map(item => `[${item.time}] ${u ? item.ps.replace(/ /g, '_') : item.ps}`).join('\n');
-                    const ptyLines = items.map(item => `[${item.time}] ${ptyList[item.pty] || item.pty}`).join('\n');
-                    const ptynLines = items.map(item => `[${item.time}] ${item.ptyn.trim() ? item.ptyn : "N/A"}`).join('\n');
-                    return `--- PS History ---\n${psLines}\n\n--- PTY History ---\n${ptyLines}\n\n--- PTYN History ---\n${ptynLines}`;
+                    
+                    let ptyLines = "";
+                    let lastPty = "";
+                    items.forEach(item => {
+                        const currentPty = ptyList[item.pty] || item.pty.toString();
+                        if (currentPty !== lastPty) {
+                            ptyLines += `[${item.time}] ${currentPty}\n`;
+                            lastPty = currentPty;
+                        }
+                    });
+
+                    const ptynEntries = items.filter(h => h.ptyn && h.ptyn.trim().length > 0);
+                    let ptynLines = "";
+                    let lastPtyn = "";
+                    ptynEntries.forEach(item => {
+                        const currentPtyn = item.ptyn;
+                        if (currentPtyn !== lastPtyn) {
+                            ptynLines += `[${item.time}] ${currentPtyn}\n`;
+                            lastPtyn = currentPtyn;
+                        }
+                    });
+
+                    return `--- PS History ---\n${psLines}\n\n--- PTY History ---\n${ptyLines.trim()}\n\n--- PTYN History ---\n${ptynLines.trim() || "N/A"}`;
                 }}
                 renderHeader={() => (
                     <tr className="border-b border-slate-700 text-slate-500 bg-slate-900 sticky top-0 z-10 text-[10px] uppercase">
