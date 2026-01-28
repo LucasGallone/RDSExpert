@@ -1,4 +1,3 @@
-
 import React, { useState, useEffect, useMemo } from 'react';
 import { RdsData, PTY_RDS, PTY_RBDS, PTY_COMBINED, PsHistoryItem, RtHistoryItem, BandscanEntry } from '../types';
 import { ECC_COUNTRY_MAP, LIC_LANGUAGE_MAP } from '../constants';
@@ -810,8 +809,14 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         if (isBandscan) {
             let checkY = 78;
             bandscanEntries.forEach((entry) => {
+                const cityShort = entry.city.split(' | ')[0];
+                const infoText = `${entry.stationName} - ${cityShort}`;
+                const wrappedInfo = doc.splitTextToSize(infoText, 60);
+                const textHeight = wrappedInfo.length * 4;
                 const hasServices = entry.hasOda || entry.hasRtPlus || entry.hasEon || entry.hasTmc || entry.tp || entry.ta;
-                const rowHeight = hasServices ? 13 : 10;
+                const minHeight = hasServices ? 13 : 10;
+                const rowHeight = Math.max(minHeight, textHeight + 5);
+                
                 if (checkY + rowHeight > 285) {
                     summaryPagesCount++;
                     checkY = 22 + rowHeight;
@@ -846,7 +851,9 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             
             if (serverName) {
                 doc.setFontSize(10);
-                const srvText = `Server: ${serverName}`;
+                // Aggressive removal of non-standard characters and emojis
+                const sanitizedServerName = serverName.replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
+                const srvText = `Server: ${sanitizedServerName}`;
                 const srvWidth = doc.getTextWidth(srvText);
                 doc.text(srvText, rightMargin - srvWidth, 28);
             }
@@ -877,8 +884,13 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             // Logic setup for dynamic summary heights
             let yPos = 78;
             bandscanEntries.forEach((entry, index) => {
+                const cityShort = entry.city.split(' | ')[0];
+                const infoText = `${entry.stationName} - ${cityShort}`;
+                const wrappedInfo = doc.splitTextToSize(infoText, 60);
+                const textHeight = wrappedInfo.length * 4;
                 const hasServices = !!(entry.hasOda || entry.hasRtPlus || entry.hasEon || entry.hasTmc || entry.tp || entry.ta);
-                const rowHeight = hasServices ? 13 : 10;
+                const minHeight = hasServices ? 13 : 10;
+                const rowHeight = Math.max(minHeight, textHeight + 5);
                 
                 // Page break check
                 if (yPos + rowHeight > 285) {
@@ -1014,9 +1026,6 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 doc.setFontSize(8);
                 doc.setFont("helvetica", "normal");
                 doc.setTextColor(100, 116, 139);
-                const cityShort = entry.city.split(' | ')[0];
-                const infoText = `${entry.stationName} - ${cityShort}`;
-                const wrappedInfo = doc.splitTextToSize(infoText, 60);
                 doc.text(wrappedInfo, 135, yPos);
                 
                 yPos += rowHeight;
@@ -1066,7 +1075,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 doc.text("TA", detBadgeX + (7 - tW) / 2, 31);
             }
             
-            doc.setFontSize(14);
+            doc.setFont("helvetica", "bold").setFontSize(14);
             doc.setTextColor(15, 23, 42);
             doc.text(`${entry.stationName}`, 60, 20);
             
@@ -1297,8 +1306,14 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             doc.setPage(1);
             let yLink = 78;
             bandscanEntries.forEach((entry, index) => {
+                const cityShort = entry.city.split(' | ')[0];
+                const infoText = `${entry.stationName} - ${cityShort}`;
+                const wrappedInfo = doc.splitTextToSize(infoText, 60);
+                const textHeight = wrappedInfo.length * 4;
                 const hasServices = !!(entry.hasOda || entry.hasRtPlus || entry.hasEon || entry.hasTmc || entry.tp || entry.ta);
-                const rowHeight = hasServices ? 13 : 10;
+                const minHeight = hasServices ? 13 : 10;
+                const rowHeight = Math.max(minHeight, textHeight + 5);
+                
                 if (yLink + rowHeight > 285) {
                     currentSummaryPage++;
                     doc.setPage(currentSummaryPage);
