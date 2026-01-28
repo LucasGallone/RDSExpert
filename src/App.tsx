@@ -1,9 +1,11 @@
+
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { 
   RdsData, 
   ConnectionStatus, 
   PTY_RDS, 
   PTY_RBDS, 
+  PTY_COMBINED,
   RtPlusTag, 
   EonNetwork, 
   RawGroup, 
@@ -11,12 +13,15 @@ import {
   TmcServiceInfo, 
   PsHistoryItem, 
   RtHistoryItem, 
-  LogEntry 
+  LogEntry,
+  BandscanEntry
 } from './types';
 import { 
   INITIAL_RDS_DATA, 
   ODA_MAP, 
-  TMC_EVENT_MAP 
+  TMC_EVENT_MAP,
+  ECC_COUNTRY_MAP,
+  LIC_LANGUAGE_MAP
 } from './constants';
 import { LcdDisplay } from './components/LcdDisplay';
 import { InfoGrid } from './components/InfoGrid';
@@ -71,6 +76,7 @@ interface DecoderState {
   diCompressed: boolean;
   diDynamicPty: boolean;
   abFlag: boolean;
+  rtPlusOdaGroup: number | null;
   rtPlusTags: Map<number, RtPlusTag & { timestamp: number }>; 
   rtPlusItemRunning: boolean;
   rtPlusItemToggle: boolean;
@@ -88,7 +94,6 @@ interface DecoderState {
   hasRtPlus: boolean;
   hasEon: boolean;
   hasTmc: boolean;
-  rtPlusOdaGroup: number | null;
   eonMap: Map<string, EonNetwork>; 
   tmcServiceInfo: TmcServiceInfo;
   tmcBuffer: TmcMessage[]; 
@@ -116,6 +121,10 @@ interface DecoderState {
   
   psHistoryBuffer: PsHistoryItem[];
   rtHistoryBuffer: RtHistoryItem[];
+
+  // Bandscan
+  isRecording: boolean;
+  bandscanEntries: BandscanEntry[];
 }
 
 // --- RDS Character Set Mapping (Custom Super-Hybrid Table) ---
@@ -477,7 +486,10 @@ const App: React.FC = () => {
   const BER_WINDOW_SIZE = 40; 
   const GRACE_PERIOD_PACKETS = 10; 
 
-  // Fixed initialization: using values instead of types in object literal
+  // --- Bandscan State ---
+  const lastApiDataRef = useRef<any>(null);
+  const apiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
   const decoderState = useRef<DecoderState>({
     psBuffer: new Array(8).fill(' '),  
     psMask: new Array(8).fill(false),
@@ -508,23 +520,23 @@ const App: React.FC = () => {
     tp: false,
     ta: false,
     ms: false,
-    diStereo: false,
+    diStereo: false, 
     diArtificialHead: false,
     diCompressed: false,
     diDynamicPty: false,
     abFlag: false,
+    rtPlusOdaGroup: null,
     rtPlusTags: new Map(), 
+    /* DO add comment above each fix. */
+    /* Fix: Replaced semicolons with commas in object literal to prevent syntax errors. */
     rtPlusItemRunning: false,
     rtPlusItemToggle: false,
     hasOda: false,
-    // Initialize with undefined as requested by comment
     odaApp: undefined,
-    // Initialize with empty array
     odaList: [],
     hasRtPlus: false,
     hasEon: false,
     hasTmc: false,
-    rtPlusOdaGroup: null,
     eonMap: new Map<string, EonNetwork>(), 
     tmcServiceInfo: { 
       ltn: 0, 
@@ -541,13 +553,12 @@ const App: React.FC = () => {
     groupSequence: [],
     
     graceCounter: GRACE_PERIOD_PACKETS,
-    // Use boolean value instead of type reference to fix potential runtime errors
     isDirty: false,
     
     // Raw Buffer for Hex Viewer
     rawGroupBuffer: [],
 
-    // History Tracking Logic - Initializing with default values
+    // History Tracking Logic
     piEstablishmentTime: 0, 
     psHistoryLogged: false, 
     
@@ -558,7 +569,11 @@ const App: React.FC = () => {
     ptynStableSince: 0,
     
     psHistoryBuffer: [],
-    rtHistoryBuffer: []
+    rtHistoryBuffer: [],
+
+    // Bandscan
+    isRecording: false,
+    bandscanEntries: []
   });
 
   const addLog = useCallback((message: string, type: 'info' | 'success' | 'error' | 'warning' = 'info') => {
@@ -572,9 +587,303 @@ const App: React.FC = () => {
     });
   }, []);
 
-  useEffect(() => {
-    addLog("Ready. Waiting for a connection to a TEF webserver.", "info");
-  }, [addLog]); 
+  // --- Bandscan Capture Logic ---
+  const generateReportForBandscanSnapshot = (state: DecoderState) => {
+    const nowObj = new Date();
+    const dateStr = nowObj.toLocaleDateString('fr-FR');
+    const timeStr = nowObj.toLocaleTimeString('fr-FR');
+    const nowTimestamp = `${dateStr} at ${timeStr}`;
+    
+    const ptyList = PTY_COMBINED;
+    const ptyName = ptyList[state.pty] || `Unknown (${state.pty})`;
+    const psFormatted = renderRdsBuffer(state.psBuffer).replace(/ /g, '_');
+    
+    // Frequency formatting helper (consistent with HistoryControls)
+    const fmtFreq = (fStr: string) => {
+        const f = parseFloat(fStr);
+        const mhzBase = Math.floor(f * 10) / 10;
+        const khzDecimal = Math.round((f * 1000) % 1000);
+        const lastTwoDigits = khzDecimal % 100;
+        if (lastTwoDigits === 50) return f.toFixed(2);
+        if (lastTwoDigits <= 40) return mhzBase.toFixed(1);
+        return (mhzBase + 0.1).toFixed(1);
+    };
+
+    // Get signal and location metadata for the TXT header
+    const rawFreq = lastApiDataRef.current?.freq || "??.?";
+    const freqFormatted = rawFreq !== "??.?" ? fmtFreq(rawFreq) : "??.?";
+    const tx = lastApiDataRef.current?.tx || renderRdsBuffer(state.psBuffer).trim() || "Unknown";
+    const city = (lastApiDataRef.current?.city || "Unknown").split(' | ')[0];
+    const dist = lastApiDataRef.current?.dist || "??";
+    const power = lastApiDataRef.current?.erp || "?";
+    const mod = lastApiDataRef.current?.st ? "Stereo" : "Mono";
+    const sigVal = lastApiDataRef.current?.sig || 0;
+
+    // Numerical sort helper for AF list, respecting head if present
+    const getSortedAfList = (head: string | null, list: string[]) => {
+      const unique = Array.from(new Set(list));
+      const others = unique.filter(f => f !== head).sort((a,b) => parseFloat(a) - parseFloat(b));
+      return head ? [head, ...others] : unique.sort((a,b) => parseFloat(a) - parseFloat(b));
+    };
+
+    // This report structure matches generateReportContent in HistoryControls.tsx exactly
+    let content = `RDSExpert - Text Report\n`;
+    content += `Generated on: ${nowTimestamp}\n`;
+    content += `---------------------------------------\n`;
+    content += `${freqFormatted} MHz -> ${tx} - ${city}\n`;
+    content += `${dist} km - ${power} kW\n`;
+    content += `Modulation: ${mod}\n`;
+    content += `Signal strength: ${sigVal.toFixed(1)} dBf\n`;
+    content += `==================================================\n\n`;
+
+    content += `[1] MAIN RDS INFORMATION\n`;
+    content += `------------------------\n`;
+    content += `PI:           ${state.currentPi}\n`;
+    content += `PS:           ${psFormatted}\n`;
+    content += `PTY:          ${ptyName} [${state.pty}]\n\n`;
+    const ptynRaw = renderRdsBuffer(state.ptynBuffer).replace(/\r/g, '').trim();
+    content += `PTYN:         ${ptynRaw || "N/A"}\n`;
+    const lpsRaw = renderRdsBuffer(state.lpsBuffer).replace(/\r/g, '').trim();
+    content += `Long PS:      ${lpsRaw || "N/A"}\n`;
+    
+    const piFirstVal = state.currentPi && state.currentPi.length >= 1 ? state.currentPi.charAt(0).toUpperCase() : null;
+    const eccCountryVal = (state.ecc && piFirstVal && ECC_COUNTRY_MAP[state.ecc.toUpperCase()]?.[piFirstVal]) || null;
+    const licLangVal = (state.lic && LIC_LANGUAGE_MAP[state.lic.toUpperCase()]) || null;
+    
+    content += `ECC:          ${state.ecc || "N/A"}${eccCountryVal ? ` (${eccCountryVal})` : ""}\n`;
+    content += `LIC:          ${state.lic || "N/A"}${licLangVal ? ` (${licLangVal})` : ""}\n\n`;
+
+    content += `[2] FLAGS / DECODER IDENTIFICATION (DI) / CLOCK TIME (CT) / PIN\n`;
+    content += `---------------------------------------------------------------\n`;
+    content += `Flags:        TP = ${state.tp ? '1' : '0'} | TA = ${state.ta ? '1' : '0'} | MS = ${state.ms ? 'Music' : 'Speech'}\n`;
+    content += `DI:           Stereo = ${state.diStereo ? '1' : '0'} | Artificial Head = ${state.diArtificialHead ? '1' : '0'} | Compressed = ${state.diCompressed ? '1' : '0'} | Dynamic PTY = ${state.diDynamicPty ? '1' : '0'}\n`;
+    content += `Local Time:   ${state.localTime || "N/A"}\n`;
+    content += `UTC Time:     ${state.utcTime || "N/A"}\n`;
+    content += `PIN:          ${state.pin || "N/A"}\n\n`;
+
+    content += `[3] RADIOTEXT\n`;
+    content += `-------------\n`;
+    const rtAVal = renderRdsBuffer(state.rtBuffer0).replace(/\r/g, '').trim();
+    const rtBVal = renderRdsBuffer(state.rtBuffer1).replace(/\r/g, '').trim();
+    if (!rtAVal && !rtBVal) {
+        content += `No Radiotext detected.\n\n`;
+    } else {
+        content += `Line A:  ${renderRdsBuffer(state.rtBuffer0).replace(/\r/g, '')}\n`;
+        content += `Line B:  ${(renderRdsBuffer(state.rtBuffer1)).replace(/\r/g, '')}\n\n`;
+    }
+
+    content += `[4] ALTERNATIVE FREQUENCIES (AF)\n`;
+    content += `--------------------------------\n`;
+    const hasAfB = state.afType === 'B' && state.afBMap.size > 0;
+    const hasAfA = state.afType === 'A' && state.afSet.length > 0;
+    
+    if (hasAfB) {
+        content += `Method: ${state.afType}\n`;
+        state.afBMap.forEach((entry, head) => {
+            const sortedSub = getSortedAfList(head, Array.from(entry.afs));
+            content += `List - ${head}: [${sortedSub.join(' / ')}]\n`;
+        });
+    } else if (hasAfA) {
+        content += `Method: ${state.afType}\n`;
+        const sortedA = getSortedAfList(state.afListHead, state.afSet);
+        content += `List: [${sortedA.join(' / ')}]\n`;
+    } else {
+        content += `No AF list found.\n`;
+    }
+    content += `\n`;
+
+    content += `[5] RADIOTEXT+ TAGS\n`;
+    content += `-------------------\n`;
+    if (state.rtPlusTags.size > 0) {
+        (Array.from(state.rtPlusTags.values()) as Array<RtPlusTag & { timestamp: number }>).sort((a,b) => a.contentType - b.contentType).forEach(tag => {
+            content += `  - ${tag.label} (ID ${tag.contentType}): "${tag.text}"\n`;
+        });
+    } else {
+        content += `  No Radiotext+ tags detected.\n`;
+    }
+    content += `\n`;
+
+    content += `[6] ENHANCED OTHER NETWORKS (EON)\n`;
+    content += `---------------------------------\n`;
+    if (state.eonMap.size > 0) {
+        state.eonMap.forEach((net) => {
+            content += `  PI: ${net.pi} | PS: ${net.ps}\n`;
+            if (net.af.length > 0) content += `    AF Method A: [${net.af.join(' / ')}]\n`;
+            if (net.mappedFreqs.length > 0) content += `    Mapped Frequencies: [${net.mappedFreqs.join(' / ')}]\n`;
+        });
+    } else {
+        content += `  No EON data decoded.\n`;
+    }
+    content += `\n`;
+
+    content += `[7] OPEN DATA APPLICATIONS (ODA)\n`;
+    content += `--------------------------------\n`;
+    if (state.odaList.length > 0) {
+        state.odaList.forEach(oda => {
+            content += `  - ${oda.name} [AID: ${oda.aid}]\n`;
+        });
+    } else {
+        content += `  No ODA AID detected on Group 3A.\n`;
+    }
+    content += `\n`;
+
+    // 8. GROUPS COUNTER
+    const G_DESC: Record<string, string> = {
+      "0A": "PI, PS, AF, PTY, Flags", "0B": "PI, PS, PTY, Flags", "1A": "ECC, LIC, PIN", "1B": "ECC, LIC, PIN",
+      "2A": "Radiotext", "2B": "Radiotext", "3A": "ODA AIDs List", "3B": "ODA AIDs List",
+      "4A": "CT - Time & Date", "4B": "CT - Time & Date", "5A": "TDC / ODA", "5B": "TDC / ODA",
+      "6A": "ODA / In-House Applications", "6B": "ODA / In-House Applications", "7A": "ODA / Paging", "7B": "ODA / Paging",
+      "8A": "TMC", "8B": "TMC", "9A": "EWS - Emergency Warning System", "9B": "EWS - Emergency Warning System",
+      "10A": "PTYN", "10B": "PTYN", "11A": "ODA", "11B": "ODA", "12A": "ODA", "12B": "ODA",
+      "13A": "ODA / Enhanced Paging", "13B": "ODA / Enhanced Paging", "14A": "EON", "14B": "EON TA",
+      "15A": "Long PS", "15B": "Fast Basic Tuning"
+    };
+
+    content += `[8] GROUPS COUNTER\n`;
+    content += `------------------\n`;
+    const errorCount = state.groupCounts["--"] || 0;
+    const validTotal = Math.max(0, state.groupTotal - errorCount);
+    const sortedGroups = Object.keys(state.groupCounts)
+      .filter(g => g !== "--")
+      .sort((a, b) => {
+        const numA = parseInt(a);
+        const numB = parseInt(b);
+        if (numA !== numB) return numA - numB;
+        return a.localeCompare(b);
+      });
+
+    if (sortedGroups.length > 0) {
+      sortedGroups.forEach(grp => {
+        const count = state.groupCounts[grp];
+        const percentage = validTotal > 0 ? ((count / validTotal) * 100).toFixed(1) : "0.0";
+        const desc = G_DESC[grp] || "Unknown";
+        content += `${grp} (${desc}) > ${percentage}%\n`;
+      });
+    } else {
+      content += `No groups detected.\n`;
+    }
+    content += `\n`;
+
+    // 9. Radiotext History
+    content += `[9] RADIOTEXT HISTORY\n`;
+    content += `---------------------\n`;
+    [...state.rtHistoryBuffer].reverse().forEach(h => {
+        content += `  [${h.time}] ${h.text}\n`;
+    });
+    content += `\n`;
+
+    // 10. PS, PTY and PTYN History
+    content += `[10] PS / PTY / PTYN HISTORY\n`;
+    content += `---------------------------\n`;
+    
+    const psHistory = [...state.psHistoryBuffer].reverse();
+
+    content += `• PS History •\n`;
+    if (psHistory.length > 0) {
+        psHistory.forEach(h => {
+            content += `[${h.time}] ${h.ps.replace(/ /g, '_')}\n`;
+        });
+    } else {
+        content += `No data decoded...\n`;
+    }
+    content += `\n`;
+
+    content += `• PTY History •\n`;
+    if (psHistory.length > 0) {
+        let lastPtyValue = "";
+        psHistory.forEach(h => {
+            const currentPtyValue = ptyList[h.pty] || h.pty.toString();
+            if (currentPtyValue !== lastPtyValue) {
+                content += `[${h.time}] ${currentPtyValue}\n`;
+                lastPtyValue = currentPtyValue;
+            }
+        });
+    } else {
+        content += `No data decoded...\n`;
+    }
+    content += `\n`;
+
+    content += `• PTYN History •\n`;
+    const ptynEntries = psHistory.filter(h => h.ptyn && h.ptyn.trim().length > 0);
+    if (ptynEntries.length > 0) {
+        let lastPtynValue = "";
+        ptynEntries.forEach(h => {
+            const currentPtyn = h.ptyn;
+            if (currentPtyn !== lastPtynValue) {
+                content += `[${h.time}] ${currentPtyn}\n`;
+                /* DO add comment above each fix. */
+                /* Fix: Corrected variable name from 'lastPtyn' to 'lastPtynValue' to resolve 'cannot find name' error. */
+                lastPtynValue = currentPtyn;
+            }
+        });
+    } else {
+        content += `No data decoded...\n`;
+    }
+    
+    return content;
+  };
+
+  const captureBandscanEntry = () => {
+    const state = decoderState.current;
+    const psRaw = renderRdsBuffer(state.psBuffer).trim();
+    // Archive forced: Archive if PI is valid OR if PS has some content (RDS decoded at screen)
+    if (state.currentPi === "----" && psRaw.length === 0) return;
+
+    const rdsText = generateReportForBandscanSnapshot(state);
+
+    const entry: BandscanEntry = {
+        freq: lastApiDataRef.current?.freq || "??.?",
+        signal: lastApiDataRef.current?.sig || 0,
+        stationName: lastApiDataRef.current?.tx || psRaw || "Unknown",
+        city: lastApiDataRef.current?.city || "Unknown",
+        pi: state.currentPi,
+        ps: renderRdsBuffer(state.psBuffer),
+        rdsReport: rdsText,
+        ta: state.ta,
+        tp: state.tp,
+        dist: lastApiDataRef.current?.dist,
+        power: lastApiDataRef.current?.erp,
+        modulation: lastApiDataRef.current?.st ? "Stereo" : "Mono",
+        hasOda: state.hasOda,
+        hasRtPlus: state.hasRtPlus,
+        hasEon: state.hasEon,
+        hasTmc: state.hasTmc
+    };
+
+    state.bandscanEntries.push(entry);
+    state.isDirty = true;
+    // Note: Do not clear lastApiDataRef here to allow final report generator access if needed
+  };
+
+  const fetchBandscanMetadata = async () => {
+    if (!serverUrl || !decoderState.current.isRecording) return;
+    try {
+      let inputUrl = serverUrl.trim();
+      if (!/^https?:\/\//i.test(inputUrl)) inputUrl = 'http://' + inputUrl;
+      const urlObj = new URL(inputUrl);
+      urlObj.pathname = urlObj.pathname.replace(/\/rds$/, "").replace(/\/$/, "") + "/api";
+      urlObj.search = ''; 
+      urlObj.hash = '';
+      
+      const proxyUrl = `https://cors-proxy.rdsexpert.workers.dev/?url=${encodeURIComponent(urlObj.toString())}`;
+      
+      const response = await fetch(proxyUrl);
+      if (response.ok) {
+        const json = await response.json();
+        lastApiDataRef.current = {
+            freq: json.freq,
+            sig: json.sig,
+            tx: json.txInfo?.tx || json.ps || "Unknown",
+            city: json.txInfo?.city || "Unknown",
+            dist: json.txInfo?.dist,
+            erp: json.txInfo?.erp,
+            st: json.st
+        };
+      }
+    } catch(e) {
+      // Fail silently
+    }
+  };
 
   const updateBer = useCallback((isError: boolean) => {
     berHistoryRef.current.push(isError ? 1 : 0);
@@ -766,7 +1075,7 @@ const App: React.FC = () => {
           afi: false, 
           mode: 0, 
           providerName: "[Unavailable]" 
-    };
+        };
         
         state.groupSequence = [];
         state.groupCounts = {};
@@ -926,19 +1235,12 @@ const App: React.FC = () => {
           }
         } else {
           const cc = g2 & 0x07;
-          
-          // Block 3 system messages decoding
-          // Alert-C Standard (Single Message 11-bit): 
-          // B3: [Duration(3)][Diversion(1)][Direction(1)][Event(11)]
           const durationCode = (g3 >> 13) & 0x07;
           const diversion = !!((g3 >> 12) & 0x01);
           const direction = !!((g3 >> 11) & 0x01);
           const eventCode = g3 & 0x07FF; 
-          
-          // Block 4 contains the location code on 16 bits
           const location = g4; 
           
-          // Ignores if Event and Loc =0
           if (eventCode === 0 && location === 0) {
             return;
           }
@@ -952,7 +1254,6 @@ const App: React.FC = () => {
             expiresTime = "Indefinite";
           }
 
-          // Dynamic update of the Emergency and Nature values
           const urgency = getEventUrgency(eventCode);
           const nature = getEventNature(eventCode);
 
@@ -1060,7 +1361,7 @@ const App: React.FC = () => {
         }
       }
       if (((g4 >> 11) & 0x1F) !== 0) {
-        state.pin = `${(g4 >> 11) & 0x1F}. ${pad((g4 >> 6) & 0x1F)}:${pad(g4 & 0x3F)}`;
+        state.pin = `${(g4 >> 11) & 0x1F}. ${pad((g4 >> 6) & 0x1F)}:${pad(g3 & 0x3F)}`;
       }
     } else if (groupTypeVal === 4 || groupTypeVal === 5) {
       const textAbFlag = !!((g2 >> 4) & 0x01); 
@@ -1312,7 +1613,27 @@ const App: React.FC = () => {
           rtAMask: [...state.rtMask0],
           rtBMask: [...state.rtMask1],
           psHistory: [...state.psHistoryBuffer], 
-          rtHistory: [...state.rtHistoryBuffer]
+          rtHistory: [...state.rtHistoryBuffer],
+          isRecording: state.isRecording,
+          bandscanEntries: [...state.bandscanEntries],
+          currentMetadata: lastApiDataRef.current ? {
+            freq: lastApiDataRef.current.freq,
+            signal: lastApiDataRef.current.sig,
+            stationName: lastApiDataRef.current.tx,
+            city: lastApiDataRef.current.city,
+            dist: lastApiDataRef.current.dist,
+            power: lastApiDataRef.current.erp,
+            pi: state.currentPi,
+            ps: currentPs,
+            ta: state.ta,
+            tp: state.tp,
+            rdsReport: "", // Populated during export
+            modulation: lastApiDataRef.current.st ? "Stereo" : "Mono",
+            hasOda: state.hasOda,
+            hasRtPlus: state.hasRtPlus,
+            hasEon: state.hasEon,
+            hasTmc: state.hasTmc
+          } : undefined
         }));
         setPacketCount(packetCountRef.current); 
         state.isDirty = false;
@@ -1328,11 +1649,9 @@ const App: React.FC = () => {
       return;
     }
 
-    // Packets counter reset when a new connection is established
     packetCountRef.current = 0;
     setPacketCount(0);
 
-    // Forced RDS data reset before the new connection is established
     resetData();
     
     if (wsRef.current) {
@@ -1340,8 +1659,8 @@ const App: React.FC = () => {
       wsRef.current.onclose = null;
       wsRef.current.onerror = null;
       wsRef.current.onmessage = null;
-      wsRef.current.close();
-      wsRef.current = null;
+      wsRef.current.close(); 
+      wsRef.current = null; 
     }
     
     try {
@@ -1396,8 +1715,15 @@ const App: React.FC = () => {
       ws.onmessage = (evt) => {
         let chunk = typeof evt.data === "string" ? evt.data : new TextDecoder("windows-1252").decode(evt.data); 
         
-        // RDS data reset when a frequency change is detected
+        // --- Bandscan Frequency Change Handler ---
         if (chunk.includes("RESET-------")) {
+          // Detect station change -> Archive previous one if recording
+          if (decoderState.current.isRecording) {
+              captureBandscanEntry();
+              // Déclencher systématiquement l'interrogation API pour la nouvelle fréquence après un délai de 2 secondes
+              if (apiTimeoutRef.current) clearTimeout(apiTimeoutRef.current);
+              apiTimeoutRef.current = setTimeout(fetchBandscanMetadata, 2000);
+          }
           resetData();
           lineBufferRef.current = "";
         }
@@ -1473,7 +1799,6 @@ const App: React.FC = () => {
     }
   };
 
-  // Auto-connect feature to the server websocket when the "?url=" parameter is present in the indicated link
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     if (params.get('url')) {
@@ -1505,6 +1830,23 @@ const App: React.FC = () => {
       default: 
         return 'text-blue-300'; 
     } 
+  };
+
+  const setRecording = (val: boolean) => {
+    // Si on arrête l'enregistrement, on archive d'abord la station en cours pour ne pas l'oublier
+    if (!val && decoderState.current.isRecording) {
+        captureBandscanEntry(); 
+    }
+    
+    decoderState.current.isRecording = val;
+    
+    if (val) {
+        // Start recording: Clear existing and attempt immediate fetch for current freq
+        decoderState.current.bandscanEntries = [];
+        if (apiTimeoutRef.current) clearTimeout(apiTimeoutRef.current);
+        apiTimeoutRef.current = setTimeout(fetchBandscanMetadata, 500);
+    }
+    decoderState.current.isDirty = true;
   };
 
   return (
@@ -1567,7 +1909,7 @@ const App: React.FC = () => {
         
         <div className="space-y-6">
            <LcdDisplay data={rdsData} onReset={resetData} />
-           <HistoryControls data={rdsData} />
+           <HistoryControls data={rdsData} onSetRecording={setRecording} serverUrl={serverUrl} />
            <InfoGrid data={rdsData} />
            <GroupAnalyzer data={rdsData} active={analyzerActive} onToggle={toggleAnalyzer} onReset={resetAnalyzer} />
            <TmcViewer 
