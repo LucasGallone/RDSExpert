@@ -1,4 +1,3 @@
-
 export interface RdsData {
   pi: string;          // Program Identification (e.g., F202)
   ps: string;          // Program Service (e.g., SKYROCK)
@@ -54,6 +53,30 @@ export interface RdsData {
   // History
   psHistory: PsHistoryItem[];
   rtHistory: RtHistoryItem[];
+
+  // Bandscan
+  isRecording: boolean;
+  bandscanEntries: BandscanEntry[];
+  currentMetadata?: BandscanEntry;
+}
+
+export interface BandscanEntry {
+    freq: string;
+    signal: number;
+    stationName: string;
+    city: string;
+    pi: string;
+    ps: string;
+    rdsReport: string;
+    ta?: boolean;
+    tp?: boolean;
+    dist?: string;
+    power?: number;
+    modulation?: string;
+    hasOda?: boolean;
+    hasRtPlus?: boolean;
+    hasEon?: boolean;
+    hasTmc?: boolean;
 }
 
 export interface LogEntry {
