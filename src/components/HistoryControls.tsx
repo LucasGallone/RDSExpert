@@ -327,7 +327,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
         // Updated formatting: [Fréquence] MHz -> PI: [PI] | PS: [PS] | [dBf] -> [Station] - [Ville]
         content += `${f} MHz -> PI: ${pi} | PS: ${ps} | ${sig} dBf -> ${st} - ${city}\n`;
     });
-    content += `\n\n`;
+    content += `\n`;
 
     // 2. Detailed reports
     content += `[DETAILED REPORTS]\n`;
