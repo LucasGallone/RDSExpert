@@ -923,7 +923,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 
                 // Frequency
                 doc.setFont("helvetica", "bold");
-                doc.setFontSize(10);
+                doc.setFontSize(11.7);
                 doc.setTextColor(37, 99, 235); // Blue 600
                 doc.text(`${freqStr}`, 15, yPos);
 
