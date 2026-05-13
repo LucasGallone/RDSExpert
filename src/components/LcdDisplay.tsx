@@ -141,7 +141,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
              // Technical Codes / Control Characters (0x00 - 0x1F)
              if (code < 32) {
                  // Logic for Long PS & RT: We only set the flag to stop underscores if the code is exactly 0x0D (13)
-                 if ((type === 'lps' || type === 'rt') && code === 13) controlFound = true;
+                 if ((type === 'lps' || type === 'rt') && (code === 13 || code === 0)) controlFound = true;
                  const hex = code.toString(16).toUpperCase().padStart(2, '0');
                  return (
                     <span key={index} className="inline-block text-[0.6em] align-middle text-slate-500 font-bold bg-slate-900/50 rounded px-0.5 mx-px border border-slate-700 select-none">
