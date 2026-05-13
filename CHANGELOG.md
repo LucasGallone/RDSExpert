@@ -1,5 +1,13 @@
 # RDSExpert Changelog
 
+### --- 13/05/2026 ---
+- Added display of the Radiotext code <00>.
+- Added display of the <0D> code on the TDC history.
+- By default, the PS field is now displayed as " -------- " and the dashes gradually disappear as the station's PS is decoded. This also makes it possible to determine if a PS is incorrectly encoded.
+- Fixed an issue that caused spaces to appear at the beginning of TDC messages when the <0D> code was used at the end of those messages.
+- Fixed an issue that prevented ECC and LIC values from being displayed when a specific encoding format was used for Group 1A.
+- Fixed an issue that prevented the BER value from being displayed when reading RAW data recordings (it was always shown as 0%). The presence of undecodable groups is now taken into account.
+
 ### --- 15/03/2026 ---
 - Added IH (In House Applications), TDC (Transparent Data Channels), RP (Radio Paging) and eRT (Enhanced Radiotext) indicators on the data and bandscan PDF exports.
 - Added "Instant Playback" function for Raw Data playback. This allows you to view all the RDS data contained in a recording without having to wait for real-time decoding. You can still use real-time decoding by selecting "Normal Playback" displayed after clicking on the "Raw Data" playback button.
