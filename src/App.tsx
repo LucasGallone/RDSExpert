@@ -417,7 +417,7 @@ const decodeRdsByte = (b: number): string => {
 };
 
 // --- Hybrid Decoder Function ---
-const renderRdsBuffer = (chars: string[], isErtOrLps: boolean = false): string => {
+const renderRdsBuffer = (chars: string[], isErtOrLps: boolean = false, isRt: boolean = false, isPs: boolean = false): string => {
   const bytes = new Uint8Array(
     chars.map((c) => (c ? c.charCodeAt(0) : 0x20))
   );
@@ -429,12 +429,13 @@ const renderRdsBuffer = (chars: string[], isErtOrLps: boolean = false): string =
       // For eRT and Long PS, we strictly use UTF-8 if high bits are present.
       // This avoids showing incorrect RDS G2 characters (like 'ń' for 0xB6) during progressive decoding.
       const looseDecoder = new TextDecoder("utf-8", { fatal: false });
-      return looseDecoder.decode(bytes).replace(/\uFFFD/g, ' ').replace(/\0/g, ' ');
+      const decoded = looseDecoder.decode(bytes).replace(/\uFFFD/g, ' ');
+      return isRt ? decoded : decoded.replace(/\0/g, isPs ? '-' : ' ');
     }
     try {
       const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
       const decoded = utf8Decoder.decode(bytes);
-      return decoded.replace(/\0/g, ' ');
+      return isRt ? decoded : decoded.replace(/\0/g, isPs ? '-' : ' ');
     } catch (e) {
       // UTF-8 failed. Check if it looks like a valid but incomplete UTF-8 sequence.
       // We look for at least one valid multi-byte character to confirm it's UTF-8.
@@ -460,14 +461,20 @@ const renderRdsBuffer = (chars: string[], isErtOrLps: boolean = false): string =
       if (hasValidUtf8) {
         // It's likely UTF-8 but incomplete. Use non-fatal decode and replace errors with spaces.
         const looseDecoder = new TextDecoder("utf-8", { fatal: false });
-        return looseDecoder.decode(bytes).replace(/\uFFFD/g, ' ').replace(/\0/g, ' ');
+        const decoded = looseDecoder.decode(bytes).replace(/\uFFFD/g, ' ');
+        return isRt ? decoded : decoded.replace(/\0/g, isPs ? '-' : ' ');
       }
     }
   }
   
   return chars.map((c) => {
     const b = c ? c.charCodeAt(0) : 0x20;
-    return b === 0 ? ' ' : decodeRdsByte(b);
+    if (b === 0) {
+      if (isRt) return '\0';
+      if (isPs) return '-';
+      return ' ';
+    }
+    return decodeRdsByte(b);
   }).join("");
 };
 
@@ -587,7 +594,7 @@ const App: React.FC = () => {
 
   // Decoder State Ref
   const decoderState = useRef<DecoderState>({
-    psBuffer: new Array(8).fill(' '),  
+    psBuffer: new Array(8).fill('-'),  
     psMask: new Array(8).fill(false),
     lpsBuffer: new Array(32).fill(' '), 
     ptynBuffer: new Array(8).fill(' '), 
@@ -741,7 +748,7 @@ const App: React.FC = () => {
     const ptyList = PTY_COMBINED;
     const ptyName = ptyList[state.pty] || `Unknown (${state.pty})`;
     const psHistoryValues = state.psHistoryBuffer.slice(0, 14).reverse().map(h => h.ps.replace(/ /g, '_'));
-    const psFormatted = psHistoryValues.length > 0 ? psHistoryValues.join(' / ') : renderRdsBuffer(state.psBuffer).replace(/ /g, '_');
+    const psFormatted = psHistoryValues.length > 0 ? psHistoryValues.join(' / ') : renderRdsBuffer(state.psBuffer, false, false, true).replace(/ /g, '_');
     
     // Frequency formatting helper (consistent with HistoryControls)
     const fmtFreq = (fStr: string) => {
@@ -757,7 +764,7 @@ const App: React.FC = () => {
     // Get signal and location metadata for the TXT header
     const rawFreq = lastApiDataRef.current?.freq || "??.?";
     const freqFormatted = rawFreq !== "??.?" ? fmtFreq(rawFreq) : "??.?";
-    const tx = lastApiDataRef.current?.tx || renderRdsBuffer(state.psBuffer).trim() || "Unknown";
+    const tx = lastApiDataRef.current?.tx || renderRdsBuffer(state.psBuffer, false, false, true).trim() || "Unknown";
     const city = (lastApiDataRef.current?.city || "[Unknown]").split(' | ')[0];
     const dist = lastApiDataRef.current?.dist || "??";
     const power = lastApiDataRef.current?.erp || "?";
@@ -809,8 +816,8 @@ const App: React.FC = () => {
 
     content += `[3] RADIOTEXT\n`;
     content += `-------------\n`;
-    const rtARaw = renderRdsBuffer(state.rtBuffer0);
-    const rtBRaw = renderRdsBuffer(state.rtBuffer1);
+    const rtARaw = renderRdsBuffer(state.rtBuffer0, false, true);
+    const rtBRaw = renderRdsBuffer(state.rtBuffer1, false, true);
     const isRtActive = (state.groupCounts['2A'] || 0) > 0 || (state.groupCounts['2B'] || 0) > 0;
 
     if (!isRtActive) {
@@ -973,24 +980,24 @@ const App: React.FC = () => {
 
   const captureBandscanEntry = () => {
     const state = decoderState.current;
-    const psRaw = renderRdsBuffer(state.psBuffer).trim();
+    const psRaw = renderRdsBuffer(state.psBuffer, false, false, true).trim();
     // Archive forced: Archive if PI is valid OR if PS has some content (RDS decoded at screen)
-    if (state.currentPi === "----" && psRaw.length === 0) return;
+    if (state.currentPi === "----" && (psRaw.length === 0 || psRaw === "--------")) return;
 
     const rdsText = generateReportForBandscanSnapshot(state);
 
     // Logic for dynamic PS detection and selection of the first valid PS
     const history = state.psHistoryBuffer;
-    const firstPsDecoded = history.length > 0 ? history[history.length - 1].ps : renderRdsBuffer(state.psBuffer);
+    const firstPsDecoded = history.length > 0 ? history[history.length - 1].ps : renderRdsBuffer(state.psBuffer, false, false, true);
     const isDynamic = history.length > 1;
 
     const entry: BandscanEntry = {
         freq: lastApiDataRef.current?.freq || "??.?",
         signal: lastApiDataRef.current?.sig || 0,
-        stationName: lastApiDataRef.current?.tx || psRaw || "Unknown",
+        stationName: lastApiDataRef.current?.tx || (psRaw === "--------" ? "Unknown" : psRaw),
         city: lastApiDataRef.current?.city || "[Unknown]",
         pi: state.currentPi,
-        ps: firstPsDecoded,
+        ps: firstPsDecoded === "--------" ? "Unknown" : firstPsDecoded,
         isDynamic: isDynamic,
         rdsReport: rdsText,
         ta: state.ta,
@@ -1125,7 +1132,7 @@ const App: React.FC = () => {
     state.piEstablishmentTime = 0;
     state.psHistoryLogged = false;
 
-    state.psBuffer.fill(' ');
+    state.psBuffer.fill('-');
     state.psMask.fill(false);
     state.lpsBuffer.fill(' ');
     state.ptynBuffer.fill(' ');
@@ -1272,7 +1279,7 @@ const App: React.FC = () => {
       if (state.piCandidate !== state.currentPi) {
         state.currentPi = state.piCandidate;
         
-        state.psBuffer.fill(' ');
+        state.psBuffer.fill('-');
         state.lpsBuffer.fill(' ');
         state.ptynBuffer.fill(' ');
         state.rtBuffer0.fill(' ');
@@ -1447,7 +1454,7 @@ const App: React.FC = () => {
       if (address === 0) {
         /* PS History archival trigger: Synchronized on Segment 0 to capture rapid title changes.
            We check the double validation of the PREVIOUS cycle before starting to overwrite the buffer. */
-        const currentPsForArchive = renderRdsBuffer(state.psBuffer);
+        const currentPsForArchive = renderRdsBuffer(state.psBuffer, false, false, true);
         const currentPtynForArchive = renderRdsBuffer(state.ptynBuffer);
         const piEstablishedForArchive = state.piEstablishmentTime > 0 && (Date.now() - state.piEstablishmentTime > 1000);
         
@@ -1731,7 +1738,7 @@ const App: React.FC = () => {
           if (tdcIndex < lastIndex && currentBuffer.trim().length > 0) {
             state.tdcHistoryBuffer.unshift({
               time: new Date().toLocaleTimeString('fr-FR'),
-              text: currentBuffer,
+              text: currentBuffer.trim(),
               group: groupLabel,
               channel: lastIndex
             });
@@ -1748,10 +1755,14 @@ const App: React.FC = () => {
           for (const b of bytes) {
             // Split on NULL (0x00), LF (0x0A), CR (0x0D), ETX (0x03), or EOT (0x04)
             if (b === 0x00 || b === 0x0A || b === 0x0D || b === 0x03 || b === 0x04) {
-              if (currentBuffer.trim().length > 0) {
+              let textToSave = currentBuffer.trim();
+              if (textToSave.length > 0) {
+                if (b === 0x0D) {
+                  textToSave += String.fromCharCode(0x0D);
+                }
                 state.tdcHistoryBuffer.unshift({
                   time: new Date().toLocaleTimeString('fr-FR'),
-                  text: currentBuffer,
+                  text: textToSave,
                   group: groupLabel,
                   channel: tdcIndex
                 });
@@ -1769,7 +1780,7 @@ const App: React.FC = () => {
               if (currentBuffer.length > 1024) {
                 state.tdcHistoryBuffer.unshift({
                   time: new Date().toLocaleTimeString('fr-FR'),
-                  text: currentBuffer,
+                  text: currentBuffer.trim(),
                   group: groupLabel,
                   channel: tdcIndex
                 });
@@ -2011,7 +2022,7 @@ const App: React.FC = () => {
     } else if (groupTypeVal === 2 || groupTypeVal === 3) {
       if (groupTypeVal === 2) {
         if (!isNaN(g3)) {
-          const variant = (g3 >> 12) & 0x0F;
+          const variant = (g3 >> 12) & 0x07;
           if (variant === 0) {
             state.ecc = (g3 & 0xFF).toString(16).toUpperCase().padStart(2, '0');
           } else if (variant === 3) {
@@ -2225,7 +2236,7 @@ const App: React.FC = () => {
         if (id === 0) {
           return;
         }
-        const rtStr = renderRdsBuffer(state.abFlag ? state.rtBuffer1 : state.rtBuffer0); 
+        const rtStr = renderRdsBuffer(state.abFlag ? state.rtBuffer1 : state.rtBuffer0, false, true);
         const length = len + 1;
         if (start < rtStr.length) {
           let text = rtStr.substring(start, start + length).replace(/[\x00-\x1F]/g, '').trim();
@@ -2376,7 +2387,7 @@ const App: React.FC = () => {
       const state = decoderState.current;
       if (state.isDirty || state.rawGroupBuffer.length > 0) {
         const now = Date.now();
-        const currentPs = renderRdsBuffer(state.psBuffer);
+        const currentPs = renderRdsBuffer(state.psBuffer, false, false, true);
         const currentPtyn = renderRdsBuffer(state.ptynBuffer);
         
         if (currentPs !== state.psCandidateString) { 
@@ -2396,7 +2407,7 @@ const App: React.FC = () => {
         const cRtMsk = state.abFlag ? state.rtMask1 : state.rtMask0;
         const termIdx = cRtBuf.indexOf('\r'); 
         let isRtC = termIdx !== -1 ? cRtMsk.slice(0, termIdx).every(Boolean) : cRtMsk.every(Boolean);
-        let rawRt = renderRdsBuffer(cRtBuf); 
+        let rawRt = renderRdsBuffer(cRtBuf, false, true); 
         if (termIdx !== -1) {
           // Include the terminator character in the history for technical code display
           rawRt = rawRt.substring(0, termIdx + 1);
@@ -2476,8 +2487,8 @@ const App: React.FC = () => {
           ertPlusTags: (Array.from(state.ertPlusTags.values()) as RtPlusTag[]).sort((a, b) => a.contentType - b.contentType),
           ps: currentPs, 
           longPs: renderRdsBuffer(state.lpsBuffer, true), 
-          rtA: renderRdsBuffer(state.rtBuffer0), 
-          rtB: renderRdsBuffer(state.rtBuffer1), 
+          rtA: renderRdsBuffer(state.rtBuffer0, false, true), 
+          rtB: renderRdsBuffer(state.rtBuffer1, false, true), 
           af: [...state.afSet], 
           afListHead: state.afListHead, 
           afBLists: afBLists, 
@@ -2636,15 +2647,26 @@ const App: React.FC = () => {
             const b = [m[1], m[2], m[3], m[4]]; 
             if (b.some((x) => x.includes('-'))) { 
               packetCountRef.current++; 
-              if (decoderState.current.currentPi !== "----" && (Date.now() - decoderState.current.piEstablishmentTime) >= 3000) {
-                updateBer(true); 
-              }
               const s = decoderState.current; 
-              s.groupTotal++;
-              s.groupCounts["--"] = (s.groupCounts["--"] || 0) + 1; 
-              if (analyzerActiveRef.current) { 
-                s.groupSequence.push("--"); 
-              } 
+              if (s.currentPi !== "----" && (Date.now() - s.piEstablishmentTime) >= 3000) {
+                updateBer(true); 
+                s.groupTotal++;
+                s.groupCounts["--"] = (s.groupCounts["--"] || 0) + 1; 
+                if (analyzerActiveRef.current) { 
+                  s.groupSequence.push("--"); 
+                  if (s.groupSequence.length > 3000) {
+                    s.groupSequence.splice(0, 1000);
+                  }
+                } 
+              }
+              s.rawGroupBuffer.push({
+                type: "--",
+                blocks: [NaN, NaN, NaN, NaN],
+                time: new Date().toLocaleTimeString('fr-FR')
+              });
+              if (s.isRawRecording) {
+                s.rawRecordingBuffer.push("---- ---- ---- ----");
+              }
               decoderState.current.isDirty = true; 
             } else { 
               const g1 = parseInt(b[0], 16); 
@@ -2772,7 +2794,7 @@ const App: React.FC = () => {
     state.piCounter = 0;
     state.piEstablishmentTime = 0;
     state.psHistoryLogged = false;
-    state.psBuffer.fill(' ');
+    state.psBuffer.fill('-');
     state.psMask.fill(false);
     state.lpsBuffer.fill(' ');
     state.ptynBuffer.fill(' ');
@@ -2892,11 +2914,22 @@ const App: React.FC = () => {
           if (hasError) {
             if (state.currentPi !== "----" && (Date.now() - state.piEstablishmentTime) >= 3000) {
               updateBer(true);
+              state.groupTotal++;
+              state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
+              if (analyzerActiveRef.current) {
+                state.groupSequence.push("--");
+                if (state.groupSequence.length > 3000) {
+                  state.groupSequence.splice(0, 1000);
+                }
+              }
             }
-            state.groupTotal++;
-            state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
-            if (analyzerActiveRef.current) {
-              state.groupSequence.push("--");
+            state.rawGroupBuffer.push({
+              type: "--",
+              blocks: [NaN, NaN, NaN, NaN],
+              time: new Date().toLocaleTimeString('fr-FR')
+            });
+            if (state.isRawRecording) {
+              state.rawRecordingBuffer.push("---- ---- ---- ----");
             }
           } else {
             const g1 = parseInt(parts[0], 16);
@@ -2917,7 +2950,7 @@ const App: React.FC = () => {
           const cRtMsk = state.abFlag ? state.rtMask1 : state.rtMask0;
           const termIdx = cRtBuf.indexOf('\r'); 
           let isRtC = termIdx !== -1 ? cRtMsk.slice(0, termIdx).every(Boolean) : cRtMsk.every(Boolean);
-          let rawRt = renderRdsBuffer(cRtBuf); 
+          let rawRt = renderRdsBuffer(cRtBuf, false, true); 
           if (termIdx !== -1) {
             rawRt = rawRt.substring(0, termIdx + 1);
           }
@@ -2959,11 +2992,22 @@ const App: React.FC = () => {
         if (hasError) {
           if (state.currentPi !== "----" && (Date.now() - state.piEstablishmentTime) >= 3000) {
             updateBer(true);
+            state.groupTotal++;
+            state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
+            if (analyzerActiveRef.current) {
+              state.groupSequence.push("--");
+              if (state.groupSequence.length > 3000) {
+                state.groupSequence.splice(0, 1000);
+              }
+            }
           }
-          state.groupTotal++;
-          state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
-          if (analyzerActiveRef.current) {
-            state.groupSequence.push("--");
+          state.rawGroupBuffer.push({
+            type: "--",
+            blocks: [NaN, NaN, NaN, NaN],
+            time: new Date().toLocaleTimeString('fr-FR')
+          });
+          if (state.isRawRecording) {
+            state.rawRecordingBuffer.push("---- ---- ---- ----");
           }
         } else {
           const g1 = parseInt(parts[0], 16);
