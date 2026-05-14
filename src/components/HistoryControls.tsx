@@ -1351,8 +1351,9 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             const sourceReport = entry.rdsReport || content;
             // Pour le PDF, on gère les filtres d'historique séparément pour conserver les caractères originaux nécessaires au dessin des cases
             let pdfSource = sourceReport;
-            if (!includeRtHistory) pdfSource = pdfSource.replace(/\[9\] RADIOTEXT HISTORY[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
-            if (!includePsHistory) pdfSource = pdfSource.replace(/\[10\] PS \/ PTY \/ PTYN HISTORY[\s\S]*?(?=={20,}|$)/g, "");
+            if (!includeGroupsSequence) pdfSource = pdfSource.replace(/\[9\] GROUPS SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
+            if (!includeRtHistory) pdfSource = pdfSource.replace(/\[10\] RADIOTEXT HISTORY[\s\S]*?(?=\[11\]|={20,}|$)/g, "");
+            if (!includePsHistory) pdfSource = pdfSource.replace(/\[11\] PS \/ PTY \/ PTYN HISTORY[\s\S]*?(?=={20,}|$)/g, "");
             
             if (signalUnit === 'dBuV') {
                 pdfSource = pdfSource.replace(/(\d+\.\d+|\d+)\s+dBf/g, (match, p1) => {
