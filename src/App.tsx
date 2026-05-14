@@ -921,17 +921,30 @@ const App: React.FC = () => {
     }
     content += `\n`;
 
-    // 9. Radiotext History
-    content += `[9] RADIOTEXT HISTORY\n`;
-    content += `---------------------\n`;
+    // 9. GROUPS SEQUENCE
+    content += `[9] GROUPS SEQUENCE (LAST 100 GROUPS DECODED)\n`;
+    content += `-------------------------------------------\n`;
+    if (state.groupSequence && state.groupSequence.length > 0) {
+        const last100 = state.groupSequence.slice(-100);
+        for (let i = 0; i < last100.length; i += 20) {
+            content += last100.slice(i, i + 20).join(', ') + '\n';
+        }
+    } else {
+        content += `No sequence available.\n`;
+    }
+    content += `\n`;
+
+    // 10. Radiotext History
+    content += `[10] RADIOTEXT HISTORY\n`;
+    content += `----------------------\n`;
     [...state.rtHistoryBuffer].reverse().forEach(h => {
         content += `  [${h.time}] ${h.text}\n`;
     });
     content += `\n`;
 
-    // 10. PS, PTY and PTYN History
-    content += `[10] PS / PTY / PTYN HISTORY\n`;
-    content += `---------------------------\n`;
+    // 11. PS, PTY and PTYN History
+    content += `[11] PS / PTY / PTYN HISTORY\n`;
+    content += `----------------------------\n`;
     
     const psHistory = [...state.psHistoryBuffer].reverse();
 
@@ -1399,19 +1412,16 @@ const App: React.FC = () => {
       time: new Date().toLocaleTimeString('fr-FR')
     });
 
-    state.groupCounts[groupStr] = (state.groupCounts[groupStr] || 0) + 1;
-    state.groupTotal++;
-
     if (state.isRawRecording) {
       const hexLine = [g1, g2, g3, g4].map(b => b.toString(16).toUpperCase().padStart(4, '0')).join(' ');
       state.rawRecordingBuffer.push(hexLine);
     }
 
-    if (analyzerActiveRef.current) {
-      state.groupSequence.push(groupStr);
-      if (state.groupSequence.length > 3000) { 
-        state.groupSequence.splice(0, 1000);
-      }
+    state.groupCounts[groupStr] = (state.groupCounts[groupStr] || 0) + 1;
+    state.groupTotal++;
+    state.groupSequence.push(groupStr);
+    if (state.groupSequence.length > 3000) { 
+      state.groupSequence.splice(0, 1000);
     }
 
     // --- DAB Cross-Referencing Data Decoding (AID 0093) ---
@@ -2493,10 +2503,10 @@ const App: React.FC = () => {
           afListHead: state.afListHead, 
           afBLists: afBLists, 
           afType: state.afType, 
-          ber: (state.currentPi !== "----" && (now - state.piEstablishmentTime) >= 3000 && berHistoryRef.current.length > 0) ? cBer : -1,
+          ber: (state.currentPi !== "----" && (now - state.piEstablishmentTime) >= 3000 && berHistoryRef.current.length >= 12) ? cBer : -1,
           groupCounts: { ...state.groupCounts }, 
           groupTotal: state.groupTotal, 
-          groupSequence: analyzerActiveRef.current ? [...state.groupSequence] : prev.groupSequence, 
+          groupSequence: analyzerActiveRef.current ? [...state.groupSequence] : state.groupSequence.slice(-100), 
           recentGroups: recent, 
           rtAMask: [...state.rtMask0],
           rtBMask: [...state.rtMask1],
@@ -2652,12 +2662,10 @@ const App: React.FC = () => {
                 updateBer(true); 
                 s.groupTotal++;
                 s.groupCounts["--"] = (s.groupCounts["--"] || 0) + 1; 
-                if (analyzerActiveRef.current) { 
-                  s.groupSequence.push("--"); 
-                  if (s.groupSequence.length > 3000) {
-                    s.groupSequence.splice(0, 1000);
-                  }
-                } 
+                s.groupSequence.push("--"); 
+                if (s.groupSequence.length > 3000) {
+                  s.groupSequence.splice(0, 1000);
+                }
               }
               s.rawGroupBuffer.push({
                 type: "--",
@@ -2916,11 +2924,9 @@ const App: React.FC = () => {
               updateBer(true);
               state.groupTotal++;
               state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
-              if (analyzerActiveRef.current) {
-                state.groupSequence.push("--");
-                if (state.groupSequence.length > 3000) {
-                  state.groupSequence.splice(0, 1000);
-                }
+              state.groupSequence.push("--");
+              if (state.groupSequence.length > 3000) {
+                state.groupSequence.splice(0, 1000);
               }
             }
             state.rawGroupBuffer.push({
@@ -2994,11 +3000,9 @@ const App: React.FC = () => {
             updateBer(true);
             state.groupTotal++;
             state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
-            if (analyzerActiveRef.current) {
-              state.groupSequence.push("--");
-              if (state.groupSequence.length > 3000) {
-                state.groupSequence.splice(0, 1000);
-              }
+            state.groupSequence.push("--");
+            if (state.groupSequence.length > 3000) {
+              state.groupSequence.splice(0, 1000);
             }
           }
           state.rawGroupBuffer.push({
