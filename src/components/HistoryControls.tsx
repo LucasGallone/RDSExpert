@@ -261,17 +261,28 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     }
     content += `\n`;
 
-    // 9. Radiotext History
-    content += `[9] RADIOTEXT HISTORY\n`;
-    content += `---------------------\n`;
+    // 9. GROUPS SEQUENCE
+    content += `[9] GROUPS SEQUENCE (LAST 100 GROUPS DECODED)\n`;
+    content += `-------------------------------------------\n`;
+    if (data.groupSequence && data.groupSequence.length > 0) {
+        const last100 = data.groupSequence.slice(-100);
+        content += last100.join(', ') + '\n';
+    } else {
+        content += `No sequence available.\n`;
+    }
+    content += `\n`;
+
+    // 10. Radiotext History
+    content += `[10] RADIOTEXT HISTORY\n`;
+    content += `----------------------\n`;
     [...data.rtHistory].reverse().forEach(h => {
         content += `  [${h.time}] ${h.text}\n`;
     });
     content += `\n`;
 
-    // 10. PS / PTY / PTYN HISTORY
-    content += `[10] PS / PTY / PTYN HISTORY\n`;
-    content += `---------------------------\n`;
+    // 11. PS / PTY / PTYN HISTORY
+    content += `[11] PS / PTY / PTYN HISTORY\n`;
+    content += `----------------------------\n`;
     
     const psHistory = [...data.psHistory].reverse();
 
@@ -813,20 +824,25 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
     // States for optional history inclusion
     const [includeRtHistory, setIncludeRtHistory] = useState(() => localStorage.getItem('rds_export_rt_history') === 'true');
     const [includePsHistory, setIncludePsHistory] = useState(() => localStorage.getItem('rds_export_ps_history') === 'true');
+    const [includeGroupsSequence, setIncludeGroupsSequence] = useState(() => localStorage.getItem('rds_export_groups_sequence') === 'true');
     const [signalUnit, setSignalUnit] = useState<'dBf' | 'dBuV'>(() => (localStorage.getItem('rds_signal_unit') as 'dBf' | 'dBuV') || 'dBf');
 
     useEffect(() => { localStorage.setItem('rds_export_rt_history', includeRtHistory.toString()); }, [includeRtHistory]);
     useEffect(() => { localStorage.setItem('rds_export_ps_history', includePsHistory.toString()); }, [includePsHistory]);
+    useEffect(() => { localStorage.setItem('rds_export_groups_sequence', includeGroupsSequence.toString()); }, [includeGroupsSequence]);
     useEffect(() => { localStorage.setItem('rds_signal_unit', signalUnit); }, [signalUnit]);
 
     // Filter report content based on checkboxes and unit preference
     const getFilteredReport = (rawContent: string) => {
         let filtered = rawContent;
+        if (!includeGroupsSequence) {
+            filtered = filtered.replace(/\[9\] GROUPS SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
+        }
         if (!includeRtHistory) {
-            filtered = filtered.replace(/\[9\] RADIOTEXT HISTORY[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
+            filtered = filtered.replace(/\[10\] RADIOTEXT HISTORY[\s\S]*?(?=\[11\]|={20,}|$)/g, "");
         }
         if (!includePsHistory) {
-            filtered = filtered.replace(/\[10\] PS \/ PTY \/ PTYN HISTORY[\s\S]*?(?=={20,}|$)/g, "");
+            filtered = filtered.replace(/\[11\] PS \/ PTY \/ PTYN HISTORY[\s\S]*?(?=={20,}|$)/g, "");
         }
         
         // Signal Unit Conversion Logic (Reference: 67.1 dBf = 55.9 dBuV -> Formula: dBuV = dBf - 11.2)
@@ -849,7 +865,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         return filtered.trim();
     };
 
-    const displayContent = useMemo(() => getFilteredReport(content), [content, includeRtHistory, includePsHistory, signalUnit]);
+    const displayContent = useMemo(() => getFilteredReport(content), [content, includeGroupsSequence, includeRtHistory, includePsHistory, signalUnit]);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(displayContent).then(() => {
@@ -885,29 +901,68 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         const now = `${dateStrNow} at ${timeStrNow}`;
 
         // Helper for technical codes drawing (grey boxes)
-        const drawTextWithCodes = (text: string, xPos: number, yPos: number, fontSize: number) => {
+        const drawTextWithCodes = (text: string, xPos: number, yPos: number, fontSize: number, rightMargin: number = 195): number => {
             let currentX = xPos;
+            let currentY = yPos;
             doc.setFontSize(fontSize);
+            
+            // Generate tokens: separate printable words from spaces and codes
+            const tokens: string[] = [];
+            let currentWord = "";
             for (let i = 0; i < text.length; i++) {
                 const char = text[i];
-                const code = char.charCodeAt(0);
-                if (code < 32) {
-                    const hex = `<${code.toString(16).toUpperCase().padStart(2, '0')}>`;
-                    doc.setFontSize(7.5); // Augmentation de la police pour les codes techniques
+                if (char.charCodeAt(0) < 32 || char === ' ' || char === '-') {
+                    if (currentWord) {
+                        tokens.push(currentWord);
+                        currentWord = "";
+                    }
+                    tokens.push(char);
+                } else {
+                    currentWord += char;
+                }
+            }
+            if (currentWord) tokens.push(currentWord);
+
+            for (const token of tokens) {
+                let tokenWidth = 0;
+                doc.setFontSize(fontSize);
+                if (token.length === 1 && token.charCodeAt(0) < 32) {
+                    const hex = `<${token.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}>`;
+                    doc.setFontSize(7.5);
+                    tokenWidth = doc.getTextWidth(hex) + 2.0; // 1.2 + 0.8
+                    doc.setFontSize(fontSize);
+                } else {
+                    tokenWidth = doc.getTextWidth(token);
+                }
+
+                if (currentX + tokenWidth > rightMargin && currentX > xPos) {
+                    if (token === ' ') continue;
+                    currentX = xPos;
+                    currentY += 5;
+                    if (currentY > 280) {
+                        doc.addPage();
+                        currentY = 20;
+                    }
+                }
+
+                if (token.length === 1 && token.charCodeAt(0) < 32) {
+                    const hex = `<${token.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}>`;
+                    doc.setFontSize(7.5);
                     const boxW = doc.getTextWidth(hex) + 1.2;
-                    const boxH = 3.8;
                     doc.setFillColor(220, 220, 220);
-                    doc.rect(currentX, yPos - 3.2, boxW, boxH, 'F');
+                    doc.rect(currentX, currentY - 3.2, boxW, 3.8, 'F');
                     doc.setTextColor(80, 80, 80);
-                    doc.text(hex, currentX + 0.6, yPos - 0.3);
+                    doc.text(hex, currentX + 0.6, currentY - 0.3);
                     doc.setFontSize(fontSize);
                     doc.setTextColor(0, 0, 0);
                     currentX += boxW + 0.8;
                 } else {
-                    doc.text(char, currentX, yPos);
-                    currentX += doc.getTextWidth(char);
+                    if (token === ' ' && currentX === xPos) continue;
+                    doc.text(token, currentX, currentY);
+                    currentX += tokenWidth;
                 }
             }
+            return currentY;
         };
         
         // --- PAGE 1: INDEX (Only if multi-station) ---
@@ -1316,7 +1371,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 if (lines[0].startsWith('[')) {
                     sectionTitle = lines[0];
                     
-                    const isHistorySection = sectionTitle.includes('[9]') || sectionTitle.includes('[10]');
+                    const isHistorySection = sectionTitle.includes('[9]') || sectionTitle.includes('[10]') || sectionTitle.includes('[11]');
                     if (isHistorySection && !historyPageStarted) {
                         doc.addPage();
                         detailY = 20;
@@ -1334,7 +1389,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                     lines.shift(); 
                 }
 
-                const isNoFormatSection = sectionTitle.includes('[6]') || sectionTitle.includes('[8]') || sectionTitle.includes('[9]') || sectionTitle.includes('[10]');
+                const isNoFormatSection = sectionTitle.includes('[6]') || sectionTitle.includes('[8]') || sectionTitle.includes('[9]') || sectionTitle.includes('[10]') || sectionTitle.includes('[11]');
 
                 doc.setFontSize(9);
                 doc.setFont("helvetica", "normal");
@@ -1409,7 +1464,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                                 }
                             });
                         } else if (sectionTitle.includes('[3]')) {
-                            drawTextWithCodes(value, valueX, detailY, 9);
+                            detailY = drawTextWithCodes(value, valueX, detailY, 9, 195);
                         } else {
                             const wrappedValue = doc.splitTextToSize(value, maxWidth);
                             wrappedValue.forEach((vLine: string, vIdx: number) => {
@@ -1427,8 +1482,8 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                         doc.setFont("helvetica", "normal");
                         doc.setTextColor(0, 0, 0);
                         
-                        if (sectionTitle.includes('[9]')) {
-                            drawTextWithCodes(line, 15, detailY, 9);
+                        if (sectionTitle.includes('[10]')) {
+                            detailY = drawTextWithCodes(line, 15, detailY, 9, 195);
                         } else {
                             const wrappedLine = doc.splitTextToSize(line, 180);
                             wrappedLine.forEach((lLine: string, lIdxWrapped: number) => {
@@ -1527,6 +1582,15 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 </div>
                 
                 <div className="bg-slate-900/50 p-3 border-b border-slate-800 flex flex-row items-center justify-center gap-6 whitespace-nowrap overflow-x-auto no-scrollbar">
+                    <label className="flex items-center gap-2 cursor-pointer group shrink-0">
+                        <input 
+                            type="checkbox" 
+                            checked={includeGroupsSequence} 
+                            onChange={(e) => setIncludeGroupsSequence(e.target.checked)}
+                            className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500/50 focus:ring-offset-slate-950 transition-all cursor-pointer"
+                        />
+                        <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include Groups Sequence</span>
+                    </label>
                     <label className="flex items-center gap-2 cursor-pointer group shrink-0">
                         <input 
                             type="checkbox" 
