@@ -1,5 +1,11 @@
 # RDSExpert Changelog
 
+### --- 14/05/2026 ---
+- Added an optional feature (which can be enabled or disabled) to the export function: "Include Group Sequence", which allows to save the sequence of the last 100 decoded groups in PDF and TXT exports.
+- Optimized the BER counter so that the initial value is accurate. Previously, the counter might have displayed 0% and then suddenly 50%.
+- Optimized the display of Radiotext in PDF exports so that no content is truncated, for example, when there are a large number of Radiotext codes.
+- Optimized the Groups Monitor display so that decoding errors, caused by the websocket, are not shown during the first 3 seconds after a frequency change.
+
 ### --- 13/05/2026 ---
 - Added display of the Radiotext code <00>.
 - Added display of the <0D> code on the TDC history.
