@@ -29,7 +29,7 @@ Follow the on-screen instructions after indicating it, and you'll be able to use
 <b>⚠️ Important note to Google Chrome users: Since April 2026, connecting to HTTP servers using a local address (e.g. 192.168.1.100) is no longer possible by default. You must disable the "Local Network Access Checks" feature in your web browser to bypass this block implemented by Google, otherwise the connection will fail.
 <br>
 <br>
--> To do this, enter `chrome://flags/#local-network-access-check` in the URL bar, then disable the relevant option.
+-> To do this, enter `chrome://flags/#local-network-access-check` in the URL bar, then disable the relevant option.</b>
 ## Data that can be decoded
 • General features for the station identification: <b>PI code</b>, <b>PS</b>, <b>TP/TA flags</b> (Traffic Program - Traffic Announcement) and <b>Music/Speech switch</b>.
 <br>
