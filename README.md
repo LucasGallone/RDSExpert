@@ -26,14 +26,10 @@ Follow the on-screen instructions after indicating it, and you'll be able to use
 - - -
 <b>📱 RDSExpert is also available as a mobile version. However, you must rotate your smartphone to landscape mode to use the interface.</b>
 - - -
-<b>⚠️ As of April 19, 2026, connecting to HTTP servers using a local IP address (e.g. localhost, 192.168.1.100, etc.) is no longer possible via Google Chrome, for reasons beyond my control.
-<br>
-This is due to a recent browser update, in which Google has tightened its rules regarding "Private Network Access" (PNA).
+<b>⚠️ Important note to Google Chrome users: Since April 2026, connecting to HTTP servers using a local address (e.g. 192.168.1.100) is no longer possible by default. You must disable the "Local Network Access Checks" feature in your web browser to bypass this block implemented by Google, otherwise the connection will fail.
 <br>
 <br>
-Connecting to HTTP servers using a public IP address is still possible. I therefore recommend using a public IP address to connect if your server is public.
-<br>
-If you really have to use a local IP address (e.g. 192.168.1.100), your only option is to use a different web browser, such as Mozilla Firefox.</b>
+-> To do this, enter `chrome://flags/#local-network-access-check` in the URL bar, then disable the relevant option.
 ## Data that can be decoded
 • General features for the station identification: <b>PI code</b>, <b>PS</b>, <b>TP/TA flags</b> (Traffic Program - Traffic Announcement) and <b>Music/Speech switch</b>.
 <br>
