@@ -30,6 +30,9 @@ Follow the on-screen instructions after indicating it, and you'll be able to use
 <br>
 <br>
 -> To do this, enter `chrome://flags/#local-network-access-check` in the URL bar, then disable the relevant option.</b>
+<br>
+<br>
+If you are concerned about the potential risks this may cause, it is best to use a different web browser such as Mozilla Firefox.
 ## Data that can be decoded
 • General features for the station identification: <b>PI code</b>, <b>PS</b>, <b>TP/TA flags</b> (Traffic Program - Traffic Announcement) and <b>Music/Speech switch</b>.
 <br>
