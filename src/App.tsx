@@ -965,8 +965,8 @@ const App: React.FC = () => {
     }
     content += `\n`;
 
-    // 9. GROUPS SEQUENCE
-    content += `[9] GROUPS SEQUENCE (LAST 100 GROUPS DECODED)\n`;
+    // 9. GROUP SEQUENCE
+    content += `[9] GROUP SEQUENCE (LAST 100 GROUPS DECODED)\n`;
     content += `-------------------------------------------\n`;
     if (state.groupSequence && state.groupSequence.length > 0) {
         const last100 = state.groupSequence.slice(-100);
