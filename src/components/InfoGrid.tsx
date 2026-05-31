@@ -21,13 +21,12 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
   const methodBCount = methodBHeaders.length;
 
   const getMethodLabel = () => {
-    if (data.afType === 'Unknown') return 'Method ?';
     if (isMethodB) {
         return `METHOD B (${methodBCount} LIST${methodBCount !== 1 ? 'S' : ''})`;
     }
     const afCount = data.af.length;
-    if (afCount === 0) return 'NO LIST DETECTED';
-    return `METHOD A (${afCount} FREQUENC${afCount !== 1 ? 'IES' : 'Y'})`;
+    const headerStr = data.afHeaderCount !== null ? `EXPECTED: ${data.afHeaderCount} | ` : '';
+    return `METHOD A (${headerStr}DECODED: ${afCount})`;
   };
 
   // Sort function for frequencies (strings)
@@ -86,15 +85,28 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
       // Method A (Cumulative Unique List)
       const rawList = data.af;
       
-      const displayAf = sortAf 
-        ? [...rawList].sort((a, b) => parseFloat(a) - parseFloat(b))
-        : rawList;
+      // Count frequency of each Alternative Frequency
+      const counts: Record<string, number> = {};
+      for (const freq of rawList) {
+        counts[freq] = (counts[freq] || 0) + 1;
+      }
+
+      const uniqueFreqs = Object.keys(counts);
+      const head = data.afListHead;
+      const remainingFreqs = uniqueFreqs.filter(f => f !== head);
+
+      // Sort remaining frequencies if sortAf is true
+      const sortedRemaining = sortAf ? sortFreqs(remainingFreqs) : remainingFreqs;
+
+      // Ensure the head frequency always appears first (en tête de liste)
+      const displayAf = head && counts[head] ? [head, ...sortedRemaining] : sortedRemaining;
       
       displayContent = displayAf.length > 0 ? (
             <div className="flex flex-wrap gap-3">
               {displayAf.map((freq, idx) => {
                 const isAm = freq.includes('kHz');
                 const isHead = data.afListHead === freq;
+                const count = counts[freq] || 1;
                 let styleClass = "";
                 
                 if (isHead) {
@@ -106,8 +118,13 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
                 }
                 
                 return (
-                  <span key={idx} className={`px-3 py-1.5 ${styleClass} text-sm font-mono rounded border transition-colors cursor-default shadow-sm flex items-center gap-1`}>
-                    {freq}
+                  <span key={idx} className={`px-3 py-1.5 ${styleClass} text-sm font-mono rounded border transition-colors cursor-default shadow-sm flex items-center gap-1.5`}>
+                    <span>{freq}</span>
+                    {count > 1 && (
+                      <span className="text-xs opacity-80 font-bold ml-0.5">
+                        (x{count})
+                      </span>
+                    )}
                   </span>
                 );
               })}
@@ -142,16 +159,18 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
               {/* Radio Tower / Antenna Icon - Replaced by FontAwesome as requested */}
               <i className="fa-solid fa-tower-broadcast text-base shrink-0"></i>
               <span className="truncate">Alternative Frequencies (AF)</span>
-              <span className="hidden sm:inline-block ml-2 text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-600 shrink-0">
-                {getMethodLabel()}
-              </span>
+              {data.afType !== 'Unknown' && (
+                <span className="hidden sm:inline-block ml-2 text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-600 shrink-0">
+                  {getMethodLabel()}
+                </span>
+              )}
             </h3>
             
             <button 
               onClick={() => setSortAf(!sortAf)}
               className={`text-[10px] font-bold uppercase tracking-wide px-3 py-1 rounded border transition-colors shrink-0 ${sortAf ? 'bg-blue-600 text-white border-blue-500' : 'bg-transparent text-slate-500 border-slate-700 hover:border-slate-500'}`}
             >
-              {sortAf ? 'FREQUENCY SORTING ENABLED' : 'FREQUENCY SORTING DISABLED'}
+              FREQUENCY SORTING
             </button>
         </div>
         
@@ -181,7 +200,7 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
             <table className="w-full text-left border-collapse font-mono text-sm">
               <thead>
                  <tr className="bg-slate-900/50 text-slate-500 text-[10px] uppercase">
-                   <th className="px-4 py-2 border-b border-slate-700 font-bold">TAG/LABEL</th>
+                   <th className="px-4 py-2 border-b border-slate-700 font-bold">TAG</th>
                    <th className="px-4 py-2 border-b border-slate-700 font-bold">Content</th>
                    <th className="px-4 py-2 border-b border-slate-700 font-bold w-24">TAG ID</th>
                  </tr>
@@ -201,7 +220,7 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
             </table>
           ) : (
             <div className="text-slate-400 text-sm italic p-2 flex items-center gap-2">
-               <span>No RT+ data detected for now.</span>
+               <span>No Radiotext+ data detected for now.</span>
             </div>
           )}
         </div>
@@ -210,8 +229,13 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
       {/* EON (Enhanced Other Networks) Card */}
       <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
         <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2 mb-4">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            Enhanced Other Networks (EON)
+            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+            <span className="truncate">Enhanced Other Networks (EON)</span>
+            {eonKeys.length > 0 && (
+              <span className="hidden sm:inline-block ml-2 text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-600 shrink-0">
+                STATIONS FOUND: {eonKeys.length}
+              </span>
+            )}
         </h3>
 
         {eonKeys.length > 0 ? (
