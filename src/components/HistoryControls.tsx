@@ -854,7 +854,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
     const [copyStatus, setCopyStatus] = useState<'IDLE' | 'COPIED'>('IDLE');
     
     // States for optional history inclusion
-    const [includeHistory, setIncludeHistory] = useState(() => localStorage.getItem('rds_export_history') !== 'false');
+    const [includeHistory, setIncludeHistory] = useState(() => localStorage.getItem('rds_export_history') === 'true');
     const [includeGroupsSequence, setIncludeGroupsSequence] = useState(() => localStorage.getItem('rds_export_groups_sequence') === 'true');
     const [includePieChart, setIncludePieChart] = useState(() => {
         const val = localStorage.getItem('rds_export_pie_chart');
@@ -1763,7 +1763,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                             onChange={(e) => setIncludePieChart(e.target.checked)}
                             className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500/50 focus:ring-offset-slate-950 transition-all cursor-pointer"
                         />
-                        <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include RDS Pie Chart</span>
+                        <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include Group Pie Chart</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer group shrink-0">
                         <input 
