@@ -298,7 +298,9 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     content += `-------------------------------------------\n`;
     if (data.groupSequence && data.groupSequence.length > 0) {
         const last100 = data.groupSequence.slice(-100);
-        content += last100.join(', ') + '\n';
+        for (let i = 0; i < last100.length; i += 20) {
+            content += last100.slice(i, i + 20).join(', ') + '\n';
+        }
     } else {
         content += `No sequence available.\n`;
     }
@@ -871,7 +873,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
     const getFilteredReport = (rawContent: string) => {
         let filtered = rawContent;
         if (!includeGroupsSequence) {
-            filtered = filtered.replace(/\[9\] GROUP SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
+            filtered = filtered.replace(/\[9\] GROUPS? SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
         }
         if (!includeHistory) {
             filtered = filtered.replace(/\[10\] RADIOTEXT HISTORY[\s\S]*?(?=\[11\]|={20,}|$)/g, "");
@@ -1410,7 +1412,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             let historyPageStarted = false; 
             const sourceReport = entry.rdsReport || content;
             let pdfSource = sourceReport;
-            if (!includeGroupsSequence) pdfSource = pdfSource.replace(/\[9\] GROUP SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
+            if (!includeGroupsSequence) pdfSource = pdfSource.replace(/\[9\] GROUPS? SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
             if (!includeHistory) {
                 pdfSource = pdfSource.replace(/\[10\] RADIOTEXT HISTORY[\s\S]*?(?=\[11\]|={20,}|$)/g, "");
                 pdfSource = pdfSource.replace(/\[11\] PS \/ PTY \/ PTYN HISTORY[\s\S]*?(?=={20,}|$)/g, "");
@@ -1423,15 +1425,21 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 });
             }
 
-            const sections = pdfSource.split(/\n\s*\n/).filter(s => !s.includes('MHz >') && !s.includes('Generated on:') && !s.includes('km -') && !s.includes('Modulation:') && !s.includes('Signal strength:')); 
+            const rawSections = pdfSource.split(/\n\s*\n/).filter(s => !s.includes('MHz >') && !s.includes('Generated on:') && !s.includes('km -') && !s.includes('Modulation:') && !s.includes('Signal strength:')); 
             
-            sections.forEach((section, sIdx) => {
+            const validSections: { title: string, lines: string[] }[] = [];
+            rawSections.forEach(section => {
                 const lines = section.split('\n').filter(l => l.trim().length > 0 && !l.trim().startsWith('-----') && !l.trim().startsWith('===='));
-                if (lines.length === 0) return;
+                if (lines.length > 0) {
+                    validSections.push({ title: lines[0].startsWith('[') ? lines[0] : "", lines });
+                }
+            });
+            
+            validSections.forEach((sectionData, sIdx) => {
+                const lines = sectionData.lines;
+                let sectionTitle = sectionData.title;
 
-                let sectionTitle = "";
-                if (lines[0].startsWith('[')) {
-                    sectionTitle = lines[0];
+                if (sectionTitle) {
                     
                     if (sectionTitle.includes('[8]') && detailY + (lines.length * 5) > 280) {
                         doc.addPage();
@@ -1526,7 +1534,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                             
                             // Separator if adjacent slice is the same color
                             const nextItem = pieData[(i + 1) % pieData.length];
-                            if (nextItem.color[0] === item.color[0] && nextItem.color[1] === item.color[1] && nextItem.color[2] === item.color[2]) {
+                            if (pieData.length > 1 && nextItem.color[0] === item.color[0] && nextItem.color[1] === item.color[1] && nextItem.color[2] === item.color[2]) {
                                 doc.setDrawColor(100, 116, 139);
                                 doc.setLineWidth(0.4);
                                 doc.line(cx, cy, cx + r * Math.cos(endAngle), cy + r * Math.sin(endAngle));
@@ -1635,7 +1643,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                             wrappedValue.forEach((vLine: string, vIdx: number) => {
                                 if (vIdx > 0) {
                                     detailY += 5;
-                                    if (detailY > 280 && (vIdx < wrappedValue.length - 1 || lIdx < lines.length - 1 || sIdx < sections.length - 1)) {
+                                    if (detailY > 280 && (vIdx < wrappedValue.length - 1 || lIdx < lines.length - 1 || sIdx < validSections.length - 1)) {
                                         doc.addPage();
                                         detailY = 20;
                                     }
@@ -1654,7 +1662,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                             wrappedLine.forEach((lLine: string, lIdxWrapped: number) => {
                                 if (lIdxWrapped > 0) {
                                     detailY += 5;
-                                    if (detailY > 280 && (lIdxWrapped < wrappedLine.length - 1 || lIdx < lines.length - 1 || sIdx < sections.length - 1)) {
+                                    if (detailY > 280 && (lIdxWrapped < wrappedLine.length - 1 || lIdx < lines.length - 1 || sIdx < validSections.length - 1)) {
                                         doc.addPage();
                                         detailY = 20;
                                     }
@@ -1664,7 +1672,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                         }
                     }
                     detailY += 5;
-                    if (detailY > 280 && (lIdx < lines.length - 1 || sIdx < sections.length - 1)) {
+                    if (detailY > 280 && (lIdx < lines.length - 1 || sIdx < validSections.length - 1)) {
                         doc.addPage();
                         detailY = 20;
                     }
