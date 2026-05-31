@@ -8,7 +8,6 @@
 - Added an indicator displaying the number of stations found in the EON list.
 - Added display of all possible Radiotext codes (e.g. <0A>) in PDF exports.
 - Added display of the <0D> code on the Long PS field on PDF exports.
-- Added 
 - Added the ability to record multiple RDS consecutively using the "Record Raw Data" function. Afterward, the user will be able to download a ZIP archive containing all the recordings made during the bandscan session.
 - Added the graphical representation (in pie chart form) of the RDS groups distribution in PDF exports.
 - Added the name of the TMC service provider in the Group Monitor and TXT/PDF exports.
