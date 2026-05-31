@@ -854,14 +854,17 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
     const [copyStatus, setCopyStatus] = useState<'IDLE' | 'COPIED'>('IDLE');
     
     // States for optional history inclusion
-    const [includeRtHistory, setIncludeRtHistory] = useState(() => localStorage.getItem('rds_export_rt_history') === 'true');
-    const [includePsHistory, setIncludePsHistory] = useState(() => localStorage.getItem('rds_export_ps_history') === 'true');
+    const [includeHistory, setIncludeHistory] = useState(() => localStorage.getItem('rds_export_history') !== 'false');
     const [includeGroupsSequence, setIncludeGroupsSequence] = useState(() => localStorage.getItem('rds_export_groups_sequence') === 'true');
+    const [includePieChart, setIncludePieChart] = useState(() => {
+        const val = localStorage.getItem('rds_export_pie_chart');
+        return val !== null ? val === 'true' : false;
+    });
     const [signalUnit, setSignalUnit] = useState<'dBf' | 'dBuV'>(() => (localStorage.getItem('rds_signal_unit') as 'dBf' | 'dBuV') || 'dBf');
 
-    useEffect(() => { localStorage.setItem('rds_export_rt_history', includeRtHistory.toString()); }, [includeRtHistory]);
-    useEffect(() => { localStorage.setItem('rds_export_ps_history', includePsHistory.toString()); }, [includePsHistory]);
+    useEffect(() => { localStorage.setItem('rds_export_history', includeHistory.toString()); }, [includeHistory]);
     useEffect(() => { localStorage.setItem('rds_export_groups_sequence', includeGroupsSequence.toString()); }, [includeGroupsSequence]);
+    useEffect(() => { localStorage.setItem('rds_export_pie_chart', includePieChart.toString()); }, [includePieChart]);
     useEffect(() => { localStorage.setItem('rds_signal_unit', signalUnit); }, [signalUnit]);
 
     // Filter report content based on checkboxes and unit preference
@@ -870,10 +873,8 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         if (!includeGroupsSequence) {
             filtered = filtered.replace(/\[9\] GROUP SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
         }
-        if (!includeRtHistory) {
+        if (!includeHistory) {
             filtered = filtered.replace(/\[10\] RADIOTEXT HISTORY[\s\S]*?(?=\[11\]|={20,}|$)/g, "");
-        }
-        if (!includePsHistory) {
             filtered = filtered.replace(/\[11\] PS \/ PTY \/ PTYN HISTORY[\s\S]*?(?=={20,}|$)/g, "");
         }
         
@@ -902,7 +903,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         return filtered.trim();
     };
 
-    const displayContent = useMemo(() => getFilteredReport(content), [content, includeGroupsSequence, includeRtHistory, includePsHistory, signalUnit]);
+    const displayContent = useMemo(() => getFilteredReport(content), [content, includeGroupsSequence, includeHistory, signalUnit]);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(displayContent).then(() => {
@@ -1410,8 +1411,10 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             const sourceReport = entry.rdsReport || content;
             let pdfSource = sourceReport;
             if (!includeGroupsSequence) pdfSource = pdfSource.replace(/\[9\] GROUP SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
-            if (!includeRtHistory) pdfSource = pdfSource.replace(/\[10\] RADIOTEXT HISTORY[\s\S]*?(?=\[11\]|={20,}|$)/g, "");
-            if (!includePsHistory) pdfSource = pdfSource.replace(/\[11\] PS \/ PTY \/ PTYN HISTORY[\s\S]*?(?=={20,}|$)/g, "");
+            if (!includeHistory) {
+                pdfSource = pdfSource.replace(/\[10\] RADIOTEXT HISTORY[\s\S]*?(?=\[11\]|={20,}|$)/g, "");
+                pdfSource = pdfSource.replace(/\[11\] PS \/ PTY \/ PTYN HISTORY[\s\S]*?(?=={20,}|$)/g, "");
+            }
             
             if (signalUnit === 'dBuV') {
                 pdfSource = pdfSource.replace(/(\d+\.\d+|\d+)\s+dBf/g, (match, p1) => {
@@ -1430,11 +1433,9 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 if (lines[0].startsWith('[')) {
                     sectionTitle = lines[0];
                     
-                    const isHistorySection = sectionTitle.includes('[9]') || sectionTitle.includes('[10]') || sectionTitle.includes('[11]');
-                    if (isHistorySection && !historyPageStarted) {
+                    if (sectionTitle.includes('[8]') && detailY + (lines.length * 5) > 280) {
                         doc.addPage();
                         detailY = 20;
-                        historyPageStarted = true;
                     } else if (detailY > 270) {
                         doc.addPage();
                         detailY = 20;
@@ -1449,6 +1450,111 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 }
 
                 const isNoFormatSection = sectionTitle.includes('[6]') || sectionTitle.includes('[8]') || sectionTitle.includes('[9]') || sectionTitle.includes('[10]') || sectionTitle.includes('[11]');
+
+                if (sectionTitle.includes('[8]') && includePieChart) {
+                    const pieData: { name: string, pct: number, color: [number, number, number] }[] = [];
+                    const PIE_COLORS: Record<string, [number, number, number]> = {
+                        "0A": [203, 213, 225], "0B": [203, 213, 225],
+                        "1A": [148, 163, 184], "1B": [148, 163, 184],
+                        "2A": [34, 211, 238], "2B": [34, 211, 238],
+                        "3A": [34, 197, 94], "3B": [34, 197, 94],
+                        "4A": [236, 72, 153], "4B": [236, 72, 153],
+                        "5A": [167, 139, 250], "5B": [167, 139, 250],
+                        "6A": [167, 139, 250], "6B": [167, 139, 250],
+                        "7A": [167, 139, 250], "7B": [167, 139, 250],
+                        "8A": [239, 68, 68], "8B": [239, 68, 68],
+                        "9A": [167, 139, 250], "9B": [167, 139, 250],
+                        "10A": [251, 146, 60], "10B": [251, 146, 60],
+                        "11A": [167, 139, 250], "11B": [167, 139, 250],
+                        "12A": [167, 139, 250], "12B": [167, 139, 250],
+                        "13A": [167, 139, 250], "13B": [167, 139, 250],
+                        "14A": [250, 204, 21], "14B": [250, 204, 21],
+                        "15A": [45, 212, 191], "15B": [45, 212, 191]
+                    };
+
+                    lines.forEach(line => {
+                        const match = line.match(/^([0-9A-Z]{2,3})\s+\(.*?\)\s+>\s+([0-9.]+)%$/);
+                        if (match) {
+                            const grp = match[1];
+                            const pct = parseFloat(match[2]);
+                            if (pct > 0) {
+                                pieData.push({ name: grp, pct, color: PIE_COLORS[grp] || [203, 213, 225] });
+                            }
+                        }
+                    });
+
+                    if (pieData.length > 0) {
+                        pieData.sort((a, b) => b.pct - a.pct);
+                        
+                        const totalPct = pieData.reduce((sum, item) => sum + item.pct, 0);
+
+                        const cx = 145; 
+                        const totalHeight = lines.length * 5;
+                        const cy = detailY + (totalHeight / 2) - 3; 
+                        const r = 15;
+
+                        let currentAngle = -Math.PI / 2;
+
+                        pieData.forEach((item, i) => {
+                            const angle = (item.pct / totalPct) * Math.PI * 2;
+                            const endAngle = currentAngle + angle;
+                            
+                            doc.setFillColor(item.color[0], item.color[1], item.color[2]);
+                            doc.setDrawColor(item.color[0], item.color[1], item.color[2]);
+                            doc.setLineWidth(0.2);
+                            
+                            const steps = Math.max(3, Math.ceil(angle / 0.05));
+                            const stepAngle = angle / steps;
+                            
+                            const slicePointsRel: [number, number][] = [];
+                            let currentAbsX = cx;
+                            let currentAbsY = cy;
+                            
+                            for (let step = 0; step <= steps; step++) {
+                                const a = currentAngle + step * stepAngle;
+                                const nextX = cx + r * Math.cos(a);
+                                const nextY = cy + r * Math.sin(a);
+                                slicePointsRel.push([nextX - currentAbsX, nextY - currentAbsY]);
+                                currentAbsX = nextX;
+                                currentAbsY = nextY;
+                            }
+                            
+                            // Close polygon to center
+                            slicePointsRel.push([cx - currentAbsX, cy - currentAbsY]);
+                            
+                            doc.lines(slicePointsRel, cx, cy, [1, 1], 'FD', true);
+                            
+                            // Separator if adjacent slice is the same color
+                            const nextItem = pieData[(i + 1) % pieData.length];
+                            if (nextItem.color[0] === item.color[0] && nextItem.color[1] === item.color[1] && nextItem.color[2] === item.color[2]) {
+                                doc.setDrawColor(100, 116, 139);
+                                doc.setLineWidth(0.4);
+                                doc.line(cx, cy, cx + r * Math.cos(endAngle), cy + r * Math.sin(endAngle));
+                            }
+                            
+                            currentAngle = endAngle;
+
+                            const col = Math.floor(i / 8);
+                            const row = i % 8;
+                            const legendX = 165 + (col * 16);
+                            const legendCurY = (cy - 18) + (row * 4.2);
+
+                            doc.setFillColor(item.color[0], item.color[1], item.color[2]);
+                            doc.setDrawColor(item.color[0], item.color[1], item.color[2]);
+                            doc.rect(legendX, legendCurY, 2.5, 2.5, 'F');
+                            doc.setFontSize(6);
+                            doc.setTextColor(50, 50, 50);
+                            doc.text(`${item.name}`, legendX + 3.5, legendCurY + 2.2);
+                        });
+                        
+                        doc.setFillColor(255, 255, 255);
+                        doc.setDrawColor(255, 255, 255);
+                        doc.circle(cx, cy, r * 0.5, 'F');
+
+                        doc.setFontSize(9);
+                        doc.setTextColor(0, 0, 0);
+                    }
+                }
 
                 doc.setFontSize(9);
                 doc.setFont("helvetica", "normal");
@@ -1653,21 +1759,22 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                     <label className="flex items-center gap-2 cursor-pointer group shrink-0">
                         <input 
                             type="checkbox" 
-                            checked={includeRtHistory} 
-                            onChange={(e) => setIncludeRtHistory(e.target.checked)}
+                            checked={includePieChart} 
+                            onChange={(e) => setIncludePieChart(e.target.checked)}
                             className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500/50 focus:ring-offset-slate-950 transition-all cursor-pointer"
                         />
-                        <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include RT History</span>
+                        <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include RDS Pie Chart</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer group shrink-0">
                         <input 
                             type="checkbox" 
-                            checked={includePsHistory} 
-                            onChange={(e) => setIncludePsHistory(e.target.checked)}
+                            checked={includeHistory} 
+                            onChange={(e) => setIncludeHistory(e.target.checked)}
                             className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500/50 focus:ring-offset-slate-950 transition-all cursor-pointer"
                         />
-                        <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include PS / PTY / PTYN History</span>
+                        <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include PS / PTY / RT History</span>
                     </label>
+
 
                     <div className="flex items-center gap-2 shrink-0 ml-2 border-l border-slate-800 pl-6">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Signal units:</span>
