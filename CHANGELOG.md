@@ -1,5 +1,22 @@
 # RDSExpert Changelog
 
+### --- 31/05/2026 ---
+- Added a confirmation dialog box when closing the tab, if a bandscan recording is in progress, to prevent accidental closures.
+- Added a drag-and-drop function to the "Raw Data" file playback button to allow the user to more easily and quickly select a file to play.
+- Added a graphical display of the RDS group distribution, both as a pie chart and horizontal bars. This allows the user to see the distribution of groups at a glance and identify those that are transmitted most and least. To access it, click the new button to the right of "Group Distribution Statistics".
+- Added a shortcut to view the content of a group by clicking on it in the "Group Distribution Statistics".
+- Added an indicator displaying the number of stations found in the EON list.
+- Added display of all possible Radiotext codes (e.g. <0A>) in PDF exports.
+- Added display of the <0D> code on the Long PS field on PDF exports.
+- Added the number of expected frequencies to the AF list, taking the "Number of AF" value from the list, in addition to the number of currently decoded frequencies.
+- Added the ability to record multiple RDS consecutively using the "Record Raw Data" function. Afterward, the user will be able to download a ZIP archive containing all the recordings made during the bandscan session.
+- Added the "REG" indicator for AF frequencies that have the regional variant indicator.
+- Fixed a PS display error which, in a very specific "corruputed PS" case, indicated the code <10> instead of dashes.
+- Fixed incomplete or non-functional Radiotext+ tags decoding for a specific RDS encoding case.
+- Fixed the display of PS in PDF exports if it is not decoded ("--------").
+- Refinement of certain interface texts to improve the English translation.
+- The "System Logs" section has been renamed "System & Connections Logs" and has received a minor graphical refinement.
+
 ### --- 14/05/2026 ---
 - Added an optional feature (which can be enabled or disabled) to the export function: "Include Groups Sequence", which allows to save the sequence of the last 100 decoded groups in PDF and TXT exports.
 - Optimized the BER counter so that the initial value is accurate. Previously, the counter might have displayed 0% and then suddenly 50%.
