@@ -1865,6 +1865,7 @@ export const INITIAL_RDS_DATA: RdsData = {
   ptynAbFlag: false,
   af: [],
   afListHead: null,
+  afHeaderCount: null,
   afBLists: {}, 
   afType: 'Unknown',
   tp: false,
