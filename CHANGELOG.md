@@ -10,7 +10,7 @@
 - Added display of the <0D> code on the Long PS field on PDF exports.
 - Added the ability to record multiple RDS consecutively using the "Record Raw Data" function. Afterward, the user will be able to download a ZIP archive containing all the recordings made during the bandscan session.
 - Added the number of expected frequencies to the AF list, taking the "Number of AF" value from the list, in addition to the number of currently decoded frequencies. This allows the user to know how many AF frequencies are supposed to be transmitted in the list, ensuring that it is fully decoded. It can also allow the user to identify technical errors in the RDS encoding.
-- Added the "REG" indicator for AF frequencies that have the regional variant indicator.
+- Added the "REG" indicator for AF frequencies that have the regional variant indicator (Method B only).
 - Fixed a PS display error which, in a very specific "corruputed PS" case, indicated the code <10> instead of dashes.
 - Fixed incomplete or non-functional Radiotext+ tags decoding for a specific RDS encoding case.
 - Fixed the display of PS in PDF exports if it is not decoded ("--------").
