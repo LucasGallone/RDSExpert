@@ -26,6 +26,7 @@ export interface RdsData {
   ptynAbFlag: boolean; // PTYN A/B Flag (Group 10A Block 2 Bit 4)
   af: string[];        // Alternative Frequencies (Method A flat list)
   afListHead: string | null; // Head of AF List (Method A)
+  afHeaderCount: number | null; // Number of AFs advertised in header
   afBLists: Record<string, string[]>; // Method B Grouping (Key=Tx Freq, Value=AF List)
   afType: 'A' | 'B' | 'Unknown'; // AF Method detection
   tp: boolean;         // Traffic Program
