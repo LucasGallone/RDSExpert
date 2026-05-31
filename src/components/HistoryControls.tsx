@@ -868,7 +868,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
     const getFilteredReport = (rawContent: string) => {
         let filtered = rawContent;
         if (!includeGroupsSequence) {
-            filtered = filtered.replace(/\[9\] GROUPS SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
+            filtered = filtered.replace(/\[9\] GROUP SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
         }
         if (!includeRtHistory) {
             filtered = filtered.replace(/\[10\] RADIOTEXT HISTORY[\s\S]*?(?=\[11\]|={20,}|$)/g, "");
@@ -1408,9 +1408,8 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             let detailY = 62;
             let historyPageStarted = false; 
             const sourceReport = entry.rdsReport || content;
-            // Pour le PDF, on gère les filtres d'historique séparément pour conserver les caractères originaux nécessaires au dessin des cases
             let pdfSource = sourceReport;
-            if (!includeGroupsSequence) pdfSource = pdfSource.replace(/\[9\] GROUPS SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
+            if (!includeGroupsSequence) pdfSource = pdfSource.replace(/\[9\] GROUP SEQUENCE[\s\S]*?(?=\[10\]|={20,}|$)/g, "");
             if (!includeRtHistory) pdfSource = pdfSource.replace(/\[10\] RADIOTEXT HISTORY[\s\S]*?(?=\[11\]|={20,}|$)/g, "");
             if (!includePsHistory) pdfSource = pdfSource.replace(/\[11\] PS \/ PTY \/ PTYN HISTORY[\s\S]*?(?=={20,}|$)/g, "");
             
@@ -1649,7 +1648,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                             onChange={(e) => setIncludeGroupsSequence(e.target.checked)}
                             className="w-3.5 h-3.5 rounded border-slate-700 bg-slate-900 text-blue-600 focus:ring-blue-500/50 focus:ring-offset-slate-950 transition-all cursor-pointer"
                         />
-                        <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include Groups Sequence</span>
+                        <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include Group Sequence</span>
                     </label>
                     <label className="flex items-center gap-2 cursor-pointer group shrink-0">
                         <input 
