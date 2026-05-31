@@ -171,7 +171,7 @@ export const TmcViewer: React.FC<TmcViewerProps> = ({ data, active, paused, onTo
                 </div>
             ) : (
                 <div className="p-8 text-center text-slate-400 italic text-xs bg-[#0f172a]">
-                   TMC Decoder is not currently enabled. Click "Start" to visualize Group 8A messages.
+                   TMC Decoder is currently disabled. Click "Start" to view Group 8A content.
                 </div>
             )}
 
