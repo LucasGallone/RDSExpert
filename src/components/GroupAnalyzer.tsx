@@ -405,6 +405,8 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
   const [slcLogs, setSlcLogs] = useState<string[]>([]);
   const dabTargetGroupRef = useRef<string | null>(null);
   const dabInfoRef = useRef<string>("");
+  const tmcTargetGroupRef = useRef<string | null>(null);
+  const tmcInfoRef = useRef<string>("");
 
   // Unique ID generator for log items
   const logIdCounter = useRef<number>(0);
@@ -424,6 +426,29 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
           element.scrollTop = element.scrollHeight;
       });
   };
+
+  // Monitor TMC Provider Name changes and update ODA logs
+  useEffect(() => {
+      if (isPaused) return;
+      const providerName = data.tmcServiceInfo?.providerName;
+      if (providerName && providerName !== "[Identifying...]") {
+          const newInfo = ` -> Provider Name: ${providerName}`;
+          if (tmcInfoRef.current !== newInfo) {
+              tmcInfoRef.current = newInfo;
+              if (tmcTargetGroupRef.current) {
+                  setOdaLogs(prev => {
+                      const idx = prev.findIndex(l => l.includes('TMC (Traffic Message Channel) [CD46]'));
+                      if (idx !== -1) {
+                          const next = [...prev];
+                          next[idx] = `ODA detected: TMC (Traffic Message Channel) [CD46] on Group ${tmcTargetGroupRef.current}${newInfo}`;
+                          return next;
+                      }
+                      return prev;
+                  });
+              }
+          }
+      }
+  }, [data.tmcServiceInfo?.providerName, isPaused]);
 
   // Handle auto-scroll for main analyzer (Stream)
   // Only scroll if active AND not paused
@@ -467,6 +492,9 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                   if (aidHex === '0093') {
                       dabTargetGroupRef.current = targetGroup;
                   }
+                  if (aidHex === 'CD46') {
+                      tmcTargetGroupRef.current = targetGroup;
+                  }
                   
                   let logLine = `ODA detected: ${odaName} [${aidHex}] on Group ${targetGroup}`;
                   
@@ -474,10 +502,22 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                   if (aidHex === '0093' && dabInfoRef.current) {
                       logLine = `ODA detected: ${odaName} [${aidHex}] on Group ${targetGroup}${dabInfoRef.current}`;
                   }
+                  if (aidHex === 'CD46' && tmcInfoRef.current) {
+                      logLine = `ODA detected: ${odaName} [${aidHex}] on Group ${targetGroup}${tmcInfoRef.current}`;
+                  }
 
                   setOdaLogs(prev => {
                       if (aidHex === '0093') {
                           const existingIdx = prev.findIndex(l => l.includes('DAB Cross-Referencing [0093]'));
+                          if (existingIdx !== -1) {
+                              if (prev[existingIdx] === logLine) return prev;
+                              const next = [...prev];
+                              next[existingIdx] = logLine;
+                              return next;
+                          }
+                      }
+                      if (aidHex === 'CD46') {
+                          const existingIdx = prev.findIndex(l => l.includes('TMC (Traffic Message Channel) [CD46]'));
                           if (existingIdx !== -1) {
                               if (prev[existingIdx] === logLine) return prev;
                               const next = [...prev];
