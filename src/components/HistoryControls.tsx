@@ -1754,7 +1754,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                     </button>
                 </div>
                 
-                <div className="bg-slate-900/50 p-3 border-b border-slate-800 flex flex-row items-center justify-center gap-6 whitespace-nowrap overflow-x-auto no-scrollbar">
+                <div className="bg-slate-900/50 p-3 border-b border-slate-800 flex flex-row items-center justify-center gap-4 whitespace-nowrap overflow-x-auto no-scrollbar">
                     <label className="flex items-center gap-2 cursor-pointer group shrink-0">
                         <input 
                             type="checkbox" 
@@ -1783,8 +1783,9 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                         <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include PS / PTY / RT History</span>
                     </label>
 
+                    <div className="w-px h-4 bg-slate-800 shrink-0 self-center" />
 
-                    <div className="flex items-center gap-2 shrink-0 ml-2 border-l border-slate-800 pl-6">
+                    <div className="flex items-center gap-2 shrink-0">
                         <span className="text-[10px] font-bold text-slate-500 uppercase tracking-tight">Signal units:</span>
                         <div className="flex bg-slate-950 rounded p-0.5 border border-slate-800">
                             <button 
