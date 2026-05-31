@@ -1715,41 +1715,48 @@ const App: React.FC = () => {
       }
     } else if (groupTypeVal === 16 && !state.odaList.some(oda => oda.group === '8A' && oda.aid !== 'CD46')) {
       state.hasTmc = true;
-      if (tmcActiveRef.current && !tmcPausedRef.current) {
-        const tuningFlag = (g2 >> 4) & 0x01;
-        const variant = g2 & 0x0F;
-        
-        if (tuningFlag === 1) {
-          if (variant === 0 || variant === 1) {
-            if (!isNaN(g3)) {
-              const ltn = (g3 >> 10) & 0x3F;
-              const sid = (g3 >> 2) & 0x3F;
-              if (ltn > 0 || sid > 0) {
-                state.tmcServiceInfo = {
-                  ...state.tmcServiceInfo,
-                  ltn: ltn,
-                  sid: sid,
-                  afi: !!((g3 >> 9) & 0x01),
-                  mode: (g3 >> 8) & 0x01
-                };
-              }
-            }
-          } else if (variant >= 4 && variant <= 5) {
-            const offset = (variant - 4) * 4;
-            if (!isNaN(g3)) {
-              state.tmcProviderBuffer[offset] = String.fromCharCode((g3 >> 8) & 0xFF);
-              state.tmcProviderBuffer[offset + 1] = String.fromCharCode(g3 & 0xFF);
-            }
-            if (!isNaN(g4)) {
-              state.tmcProviderBuffer[offset + 2] = String.fromCharCode((g4 >> 8) & 0xFF);
-              state.tmcProviderBuffer[offset + 3] = String.fromCharCode(g4 & 0xFF);
-            }
-            const providerName = state.tmcProviderBuffer.join('').trim();
-            if (providerName) {
-              state.tmcServiceInfo.providerName = providerName;
+      const tuningFlag = (g2 >> 4) & 0x01;
+      const variant = g2 & 0x0F;
+      
+      if (tuningFlag === 1) {
+        if (variant === 0 || variant === 1) {
+          if (!isNaN(g3)) {
+            const ltn = (g3 >> 10) & 0x3F;
+            const sid = (g3 >> 2) & 0x3F;
+            if (ltn > 0 || sid > 0) {
+              state.tmcServiceInfo = {
+                ...state.tmcServiceInfo,
+                ltn: ltn,
+                sid: sid,
+                afi: !!((g3 >> 9) & 0x01),
+                mode: (g3 >> 8) & 0x01
+              };
             }
           }
-        } else {
+        } else if (variant >= 4 && variant <= 5) {
+          const offset = (variant - 4) * 4;
+          if (!isNaN(g3)) {
+            state.tmcProviderBuffer[offset] = String.fromCharCode((g3 >> 8) & 0xFF);
+            state.tmcProviderBuffer[offset + 1] = String.fromCharCode(g3 & 0xFF);
+          }
+          if (!isNaN(g4)) {
+            state.tmcProviderBuffer[offset + 2] = String.fromCharCode((g4 >> 8) & 0xFF);
+            state.tmcProviderBuffer[offset + 3] = String.fromCharCode(g4 & 0xFF);
+          }
+          const providerName = state.tmcProviderBuffer.join('').trim();
+          if (providerName) {
+            state.tmcServiceInfo.providerName = providerName;
+            const idx = state.odaList.findIndex(o => o.aid === 'CD46');
+            if (idx !== -1) {
+              state.odaList[idx].extra = ` -> Provider Name: ${providerName}`;
+              state.isDirty = true;
+            }
+          }
+        }
+      }
+
+      if (tmcActiveRef.current && !tmcPausedRef.current) {
+        if (tuningFlag === 0) {
           const cc = g2 & 0x07;
           if (!isNaN(g3) && !isNaN(g4)) {
             const durationCode = (g3 >> 13) & 0x07;
@@ -2209,7 +2216,14 @@ const App: React.FC = () => {
             state.dabTargetGroup = targetGroup;
         }
 
-        const newOda = { name: odaName, aid: aid, group: targetGroup, extra: (aid === '0093' ? state.dabExtraInfo : undefined) };
+        let extraInfo: string | undefined = undefined;
+        if (aid === '0093') {
+            extraInfo = state.dabExtraInfo;
+        } else if (aid === 'CD46' && state.tmcServiceInfo?.providerName && state.tmcServiceInfo.providerName !== "[Identifying...]") {
+            extraInfo = ` -> Provider Name: ${state.tmcServiceInfo.providerName}`;
+        }
+
+        const newOda = { name: odaName, aid: aid, group: targetGroup, extra: extraInfo };
         state.odaApp = newOda;
         const eIdx = state.odaList.findIndex((o) => o.aid === aid);
         if (eIdx !== -1) {
