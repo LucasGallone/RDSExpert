@@ -273,9 +273,9 @@ const ChartBody = React.memo(({ chartData, onClose }: { chartData: any[], onClos
            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
         </button>
       </div>
-      <div className="flex-1 p-2 md:p-6 flex flex-col md:flex-row gap-6 overflow-y-auto overflow-x-hidden custom-scrollbar">
+      <div className="flex-1 p-2 md:p-6 flex flex-row gap-4 md:gap-6 overflow-hidden">
         {/* Pie Chart */}
-        <div className="w-full md:flex-1 h-[250px] md:h-full min-h-[250px] shrink-0 md:shrink">
+        <div className="flex-1 min-w-0 h-full">
           <ResponsiveContainer width="100%" height="100%">
             <PieChart>
               <Pie
@@ -304,7 +304,7 @@ const ChartBody = React.memo(({ chartData, onClose }: { chartData: any[], onClos
           </ResponsiveContainer>
         </div>
         {/* Bar Chart */}
-        <div className="w-full md:flex-1 h-[400px] md:h-full min-h-[400px] shrink-0 md:shrink">
+        <div className="flex-1 min-w-0 h-full">
            <ResponsiveContainer width="100%" height="100%">
               <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
                 <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
