@@ -31,12 +31,14 @@ import { InfoGrid } from './components/InfoGrid';
 import { GroupAnalyzer } from './components/GroupAnalyzer';
 import { TmcViewer } from './components/TmcViewer';
 import { HistoryControls, HistoryViewer } from './components/HistoryControls';
+import JSZip from 'jszip';
 
 interface AfBEntry {
   expected: number;
   afs: Set<string>;
   matchCount: number;
   pairCount: number;
+  regionalAfs: Set<string>;
 }
 
 interface DecoderState {
@@ -56,7 +58,9 @@ interface DecoderState {
   rtStableSince: number;
 
   afSet: string[];
+  afMethodAG3s: Set<number>;
   afListHead: string | null;
+  afHeaderCount: number | null;
   lastGroup0A3: number | null;
   afBMap: Map<string, AfBEntry>;
   currentMethodBGroup: string | null; 
@@ -430,12 +434,12 @@ const renderRdsBuffer = (chars: string[], isErtOrLps: boolean = false, isRt: boo
       // This avoids showing incorrect RDS G2 characters (like 'ń' for 0xB6) during progressive decoding.
       const looseDecoder = new TextDecoder("utf-8", { fatal: false });
       const decoded = looseDecoder.decode(bytes).replace(/\uFFFD/g, ' ');
-      return isRt ? decoded : decoded.replace(/\0/g, isPs ? '-' : ' ');
+      return isRt ? decoded : decoded.replace(isPs ? /[\x00-\x1F]/g : /\0/g, isPs ? '-' : ' ');
     }
     try {
       const utf8Decoder = new TextDecoder("utf-8", { fatal: true });
       const decoded = utf8Decoder.decode(bytes);
-      return isRt ? decoded : decoded.replace(/\0/g, isPs ? '-' : ' ');
+      return isRt ? decoded : decoded.replace(isPs ? /[\x00-\x1F]/g : /\0/g, isPs ? '-' : ' ');
     } catch (e) {
       // UTF-8 failed. Check if it looks like a valid but incomplete UTF-8 sequence.
       // We look for at least one valid multi-byte character to confirm it's UTF-8.
@@ -462,7 +466,7 @@ const renderRdsBuffer = (chars: string[], isErtOrLps: boolean = false, isRt: boo
         // It's likely UTF-8 but incomplete. Use non-fatal decode and replace errors with spaces.
         const looseDecoder = new TextDecoder("utf-8", { fatal: false });
         const decoded = looseDecoder.decode(bytes).replace(/\uFFFD/g, ' ');
-        return isRt ? decoded : decoded.replace(/\0/g, isPs ? '-' : ' ');
+        return isRt ? decoded : decoded.replace(isPs ? /[\x00-\x1F]/g : /\0/g, isPs ? '-' : ' ');
       }
     }
   }
@@ -568,6 +572,8 @@ const App: React.FC = () => {
   const [packetCount, setPacketCount] = useState<number>(0);
   const [showSecurityError, setShowSecurityError] = useState<boolean>(false);
   const [showRawMenu, setShowRawMenu] = useState<boolean>(false);
+  const [droppedFile, setDroppedFile] = useState<File | null>(null);
+  const [isDraggingOverRaw, setIsDraggingOverRaw] = useState<boolean>(false);
   const rawPlaybackModeRef = useRef<'normal' | 'instant'>('normal');
   const [analyzerActive, setAnalyzerActive] = useState<boolean>(false);
   const analyzerActiveRef = useRef<boolean>(false);
@@ -606,7 +612,9 @@ const App: React.FC = () => {
     rtStableSince: 0,
 
     afSet: [], 
+    afMethodAG3s: new Set<number>(),
     afListHead: null, 
+    afHeaderCount: null,
     lastGroup0A3: null,
     afBMap: new Map<string, AfBEntry>(),
     currentMethodBGroup: null, 
@@ -774,8 +782,35 @@ const App: React.FC = () => {
     // Numerical sort helper for AF list, respecting head if present
     const getSortedAfList = (head: string | null, list: string[]) => {
       const unique = Array.from(new Set(list));
-      const others = unique.filter(f => f !== head).sort((a,b) => parseFloat(a) - parseFloat(b));
+      const headFloat = head ? parseFloat(head) : NaN;
+      const others = unique.filter(f => isNaN(headFloat) || parseFloat(f) !== headFloat).sort((a,b) => parseFloat(a) - parseFloat(b));
       return head ? [head, ...others] : unique.sort((a,b) => parseFloat(a) - parseFloat(b));
+    };
+
+    // Numerical sort helper for Method A AF list, respecting head and showing repetition counts
+    const getSortedAfListWithCounts = (head: string | null, list: string[]) => {
+      const counts: Record<string, number> = {};
+      for (const freq of list) {
+        counts[freq] = (counts[freq] || 0) + 1;
+      }
+      const unique = Array.from(new Set(list));
+      const headFloat = head ? parseFloat(head) : NaN;
+      const others = unique.filter(f => isNaN(headFloat) || parseFloat(f) !== headFloat).sort((a,b) => parseFloat(a) - parseFloat(b));
+
+      const formatFreqWithCount = (f: string, isHeadFreq: boolean) => {
+        const rawCount = counts[f] || 0;
+        const displayCount = isHeadFreq ? rawCount - 1 : rawCount;
+        if (displayCount > 1) {
+          return `${f} (x${displayCount})`;
+        }
+        return f;
+      };
+
+      if (head) {
+        return [formatFreqWithCount(head, true), ...others.map(f => formatFreqWithCount(f, false))];
+      } else {
+        return unique.sort((a,b) => parseFloat(a) - parseFloat(b)).map(f => formatFreqWithCount(f, false));
+      }
     };
 
     // This report structure matches generateReportContent in HistoryControls.tsx exactly
@@ -793,10 +828,11 @@ const App: React.FC = () => {
     content += `PI:           ${state.currentPi}\n`;
     content += `PS:           ${psFormatted}\n`;
     content += `PTY:          ${ptyName} [${state.pty}]\n\n`;
-    const ptynRaw = renderRdsBuffer(state.ptynBuffer).replace(/\r/g, '').trim();
-    content += `PTYN:         ${ptynRaw || "N/A"}\n`;
-    const lpsRaw = renderRdsBuffer(state.lpsBuffer).replace(/\r/g, '').trim();
-    content += `Long PS:      ${lpsRaw || "N/A"}\n`;
+    const protectRdsControls = (t: string) => t.replace(/\n/g, '\uE00A').replace(/\r/g, '\uE00D');
+    const ptynRaw = protectRdsControls(renderRdsBuffer(state.ptynBuffer));
+    content += `PTYN:         ${ptynRaw.trim() ? ptynRaw : "N/A"}\n`;
+    const lpsRaw = protectRdsControls(renderRdsBuffer(state.lpsBuffer));
+    content += `Long PS:      ${lpsRaw.trim() ? lpsRaw : "N/A"}\n`;
     
     const piFirstVal = state.currentPi && state.currentPi.length >= 1 ? state.currentPi.charAt(0).toUpperCase() : null;
     const eccCountryVal = (state.ecc && piFirstVal && ECC_COUNTRY_MAP[state.ecc.toUpperCase()]?.[piFirstVal]) || null;
@@ -816,8 +852,8 @@ const App: React.FC = () => {
 
     content += `[3] RADIOTEXT\n`;
     content += `-------------\n`;
-    const rtARaw = renderRdsBuffer(state.rtBuffer0, false, true);
-    const rtBRaw = renderRdsBuffer(state.rtBuffer1, false, true);
+    const rtARaw = protectRdsControls(renderRdsBuffer(state.rtBuffer0, false, true));
+    const rtBRaw = protectRdsControls(renderRdsBuffer(state.rtBuffer1, false, true));
     const isRtActive = (state.groupCounts['2A'] || 0) > 0 || (state.groupCounts['2B'] || 0) > 0;
 
     if (!isRtActive) {
@@ -837,12 +873,20 @@ const App: React.FC = () => {
     if (hasAfB) {
         content += `Method: ${state.afType}\n`;
         state.afBMap.forEach((entry, head) => {
-            const sortedSub = getSortedAfList(head, Array.from(entry.afs));
+            const mappedAfs = Array.from(entry.afs || []).map(f => {
+                if (entry.regionalAfs && entry.regionalAfs.has(f)) {
+                    return `${f} (REG)`;
+                }
+                return f;
+            });
+            const sortedSub = getSortedAfList(head, mappedAfs);
             content += `List - ${head}: [${sortedSub.join(' / ')}]\n`;
         });
     } else if (hasAfA) {
-        content += `Method: ${state.afType}\n`;
-        const sortedA = getSortedAfList(state.afListHead, state.afSet);
+        const expected = state.afHeaderCount;
+        const decoded = state.afSet.length;
+        content += `Method: ${state.afType} (Expected: ${expected !== null ? expected : "?"} | Decoded: ${decoded})\n`;
+        const sortedA = getSortedAfListWithCounts(state.afListHead, state.afSet);
         content += `List: [${sortedA.join(' / ')}]\n`;
     } else {
         content += `No AF list found.\n`;
@@ -938,7 +982,7 @@ const App: React.FC = () => {
     content += `[10] RADIOTEXT HISTORY\n`;
     content += `----------------------\n`;
     [...state.rtHistoryBuffer].reverse().forEach(h => {
-        content += `  [${h.time}] ${h.text}\n`;
+        content += `  [${h.time}] ${protectRdsControls(h.text)}\n`;
     });
     content += `\n`;
 
@@ -1007,10 +1051,10 @@ const App: React.FC = () => {
     const entry: BandscanEntry = {
         freq: lastApiDataRef.current?.freq || "??.?",
         signal: lastApiDataRef.current?.sig || 0,
-        stationName: lastApiDataRef.current?.tx || (psRaw === "--------" ? "Unknown" : psRaw),
+        stationName: lastApiDataRef.current?.tx || psRaw,
         city: lastApiDataRef.current?.city || "[Unknown]",
         pi: state.currentPi,
-        ps: firstPsDecoded === "--------" ? "Unknown" : firstPsDecoded,
+        ps: firstPsDecoded,
         isDynamic: isDynamic,
         rdsReport: rdsText,
         ta: state.ta,
@@ -1136,6 +1180,19 @@ const App: React.FC = () => {
     decoderState.current.isDirty = true;
   }, []);
 
+  useEffect(() => {
+    const handleBeforeUnload = (e: BeforeUnloadEvent) => {
+      if (decoderState.current.isRecording) {
+        e.preventDefault();
+        const msg = "A bandscan recording is currently in progress. Are you sure you want to leave and stop the recording?";
+        e.returnValue = msg;
+        return msg;
+      }
+    };
+    window.addEventListener('beforeunload', handleBeforeUnload);
+    return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+  }, []);
+
   const resetData = useCallback(() => {
     const state = decoderState.current;
     
@@ -1157,7 +1214,9 @@ const App: React.FC = () => {
     state.rtStableSince = 0;
 
     state.afSet = [];
+    state.afMethodAG3s.clear();
     state.afListHead = null;
+    state.afHeaderCount = null;
     state.afBMap.clear();
     state.currentMethodBGroup = null;
     state.eonMap.clear();
@@ -1221,9 +1280,6 @@ const App: React.FC = () => {
     state.lastGroup0A3 = null;
     state.afType = 'Unknown';
     state.tmcServiceInfo = { ltn: 0, sid: 0, afi: false, mode: 0, providerName: "[Identifying...]" };
-
-    state.isRawRecording = false;
-    state.rawRecordingBuffer = [];
 
     state.groupCounts = {};
     state.groupTotal = 0;
@@ -1303,7 +1359,9 @@ const App: React.FC = () => {
         state.rtStableSince = 0;
 
         state.afSet = [];
+        state.afMethodAG3s.clear();
         state.afListHead = null;
+        state.afHeaderCount = null;
         state.afBMap.clear();
         state.currentMethodBGroup = null;
         state.eonMap.clear();
@@ -1507,76 +1565,103 @@ const App: React.FC = () => {
       }
 
       if (!isNaN(g4)) {
-        state.psBuffer[address * 2] = String.fromCharCode((g4 >> 8) & 0xFF);
-        state.psBuffer[address * 2 + 1] = String.fromCharCode(g4 & 0xFF);
-        state.psMask[address * 2] = true;
-        state.psMask[address * 2 + 1] = true;
+        const c1 = (g4 >> 8) & 0xFF;
+        const c2 = g4 & 0xFF;
+        // Reject PS blocks with control characters
+        if (c1 >= 0x20 && c2 >= 0x20) {
+          state.psBuffer[address * 2] = String.fromCharCode(c1);
+          state.psBuffer[address * 2 + 1] = String.fromCharCode(c2);
+          state.psMask[address * 2] = true;
+          state.psMask[address * 2 + 1] = true;
+        }
       }
 
       if (isGroupA) {
-        if (!isNaN(g3) && state.lastGroup0A3 !== g3) {
-          state.lastGroup0A3 = g3;
+        if (!isNaN(g3)) {
           const af1 = (g3 >> 8) & 0xFF;
           const af2 = g3 & 0xFF;
-          const isAfHeader = (v: number) => v >= 225 && v <= 249;
+          const isAfHeader = (v: number) => v >= 224 && v <= 249;
           const isAfFreq = (v: number) => v >= 1 && v <= 204;
-          const freq1Str = decodeAf(af1);
-          const freq2Str = decodeAf(af2);
 
-          const processMethodAFreq = (f: string) => {
-            if (!state.afSet.includes(f)) {
-              state.afSet.push(f);
-            }
-          };
+          // Process Method A lists with duplicate preservation
+          if (!state.afMethodAG3s.has(g3)) {
+            state.afMethodAG3s.add(g3);
 
-          const handleAfCode = (code: number) => {
-            if (state.lfMfFollows) {
-              const amFreq = decodeLfMf(code);
-              if (amFreq) processMethodAFreq(amFreq);
-              state.lfMfFollows = false;
-              return true;
-            }
-            if (code === 250) {
-              state.lfMfFollows = true;
-              return true;
-            }
-            return false;
-          };
+            const newAfList: string[] = [];
+            let foundHead: string | null = null;
+            let foundHeaderCount: number | null = null;
+            let lfMfState = false;
 
-          if (!handleAfCode(af1)) {
-            if (isAfHeader(af1)) {
-              const headFreq = decodeAf(af2);
-              if (headFreq) {
-                processMethodAFreq(headFreq);
-                state.afListHead = headFreq;
-                const headIdx = state.afSet.indexOf(headFreq);
-                if (headIdx > 0) {
-                  state.afSet.splice(headIdx, 1);
-                  state.afSet.unshift(headFreq);
+            for (const itemG3 of state.afMethodAG3s) {
+              const b1 = (itemG3 >> 8) & 0xFF;
+              const b2 = itemG3 & 0xFF;
+
+              const handleCode = (code: number) => {
+                if (lfMfState) {
+                  const amFreq = decodeLfMf(code);
+                  if (amFreq) newAfList.push(amFreq);
+                  lfMfState = false;
+                  return true;
                 }
-                const count = Number(af1) - 224;
-                state.currentMethodBGroup = headFreq;
-                if (!state.afBMap.has(headFreq)) {
-                  state.afBMap.set(headFreq, { 
-                    expected: count, 
-                    afs: new Set(), 
-                    matchCount: 0, 
-                    pairCount: 0 
+                if (code === 250) {
+                  lfMfState = true;
+                  return true;
+                }
+                return false;
+              };
+
+              let processedB1 = false;
+              if (handleCode(b1)) {
+                processedB1 = true;
+              } else if (isAfHeader(b1)) {
+                foundHeaderCount = b1 - 224;
+                const headFreq = decodeAf(b2);
+                if (headFreq) {
+                  foundHead = headFreq;
+                  newAfList.push(headFreq);
+                }
+                processedB1 = true;
+              }
+
+              if (!processedB1) {
+                if (isAfFreq(b1)) {
+                  const f = decodeAf(b1);
+                  if (f) newAfList.push(f);
+                }
+              }
+
+              if (!isAfHeader(b1)) {
+                if (!handleCode(b2)) {
+                  if (isAfFreq(b2)) {
+                    const f = decodeAf(b2);
+                    if (f) newAfList.push(f);
+                  }
+                }
+              }
+            }
+
+            state.afSet = newAfList;
+            if (foundHead) {
+              state.afListHead = foundHead;
+              
+              if (foundHeaderCount !== null) {
+                state.currentMethodBGroup = foundHead;
+                const count = foundHeaderCount;
+                if (!state.afBMap.has(foundHead)) {
+                  state.afBMap.set(foundHead, {
+                    expected: count,
+                    afs: new Set(),
+                    matchCount: 0,
+                    pairCount: 0,
+                    regionalAfs: new Set()
                   });
                 } else {
-                  state.afBMap.get(headFreq)!.expected = count;
+                  state.afBMap.get(foundHead)!.expected = count;
                 }
               }
-            } else {
-              if (freq1Str) {
-                processMethodAFreq(freq1Str);
-              }
             }
-          }
-
-          if (!handleAfCode(af2)) {
-            if (freq2Str) {
-              processMethodAFreq(freq2Str);
+            if (foundHeaderCount !== null) {
+              state.afHeaderCount = foundHeaderCount;
             }
           }
 
@@ -1609,6 +1694,14 @@ const App: React.FC = () => {
               const f2 = decodeAf(af2);
               if (f1 === state.currentMethodBGroup || f2 === state.currentMethodBGroup) {
                 entry.matchCount++;
+              }
+              if (f1 && f2 && af1 > af2) {
+                if (f1 !== state.currentMethodBGroup) {
+                  entry.regionalAfs.add(f1);
+                }
+                if (f2 !== state.currentMethodBGroup) {
+                  entry.regionalAfs.add(f2);
+                }
               }
             }
           }
@@ -1964,8 +2057,8 @@ const App: React.FC = () => {
         if (!state.eonMap.has(eonPi)) {
           state.eonMap.set(eonPi, {
             pi: eonPi, 
-            ps: "        ", 
-            psBuffer: new Array(8).fill(' '), 
+            ps: "--------", 
+            psBuffer: new Array(8).fill('-'), 
             tp: false, 
             ta: false, 
             pty: 0, 
@@ -1982,9 +2075,13 @@ const App: React.FC = () => {
         const variant = g2 & 0x0F;
         if (variant >= 0 && variant <= 3) {
           if (!isNaN(g3)) {
-            network.psBuffer[variant * 2] = String.fromCharCode((g3 >> 8) & 0xFF);
-            network.psBuffer[variant * 2 + 1] = String.fromCharCode(g3 & 0xFF);
-            network.ps = renderRdsBuffer(network.psBuffer);
+            const c1 = (g3 >> 8) & 0xFF;
+            const c2 = g3 & 0xFF;
+            if (c1 >= 0x20 && c2 >= 0x20) {
+              network.psBuffer[variant * 2] = String.fromCharCode(c1);
+              network.psBuffer[variant * 2 + 1] = String.fromCharCode(c2);
+              network.ps = renderRdsBuffer(network.psBuffer);
+            }
           }
         } else if (variant === 4) {
           if (!isNaN(g3)) {
@@ -2092,7 +2189,7 @@ const App: React.FC = () => {
       if (!isNaN(g4)) {
         const aid = g4.toString(16).toUpperCase().padStart(4, '0');
         const targetGroup = `${(g2 & 0x1F) >> 1}${(g2 & 0x01) ? 'B' : 'A'}`;
-        const odaName = ODA_MAP[aid] || "Unknown ODA";
+        const odaName = ODA_MAP[aid] || "Unknown ODA!";
 
         // If an ODA is assigned to a TDC or IH group, turn off the corresponding indicator
         if (targetGroup === '5A' || targetGroup === '5B') {
@@ -2240,29 +2337,25 @@ const App: React.FC = () => {
     } else if (state.rtPlusOdaGroup !== null && groupTypeVal === state.rtPlusOdaGroup && (groupTypeVal & 1) === 0) {
       state.hasRtPlus = true;
       const g2Spare = g2 & 0x07;
-      state.rtPlusItemToggle = !!((g2 >> 4) & 0x01);
+      const rtPlusItemToggle = !!((g2 >> 4) & 0x01);
+      state.rtPlusItemToggle = rtPlusItemToggle;
+      
       state.rtPlusItemRunning = !!((g2 >> 3) & 0x01);
       const processTag = (id: number, start: number, len: number) => {
         if (id === 0) {
           return;
         }
-        const rtStr = renderRdsBuffer(state.abFlag ? state.rtBuffer1 : state.rtBuffer0, false, true);
-        const length = len + 1;
-        if (start < rtStr.length) {
-          let text = rtStr.substring(start, start + length).replace(/[\x00-\x1F]/g, '').trim();
-          if (text.length > 0) {
-            state.rtPlusTags.set(id, { 
-              contentType: id, 
-              start: start, 
-              length: len, 
-              label: RT_PLUS_LABELS[id] || `TAG ${id}`, 
-              text: text, 
-              isCached: false, 
-              timestamp: Date.now() 
-            });
-            state.isDirty = true;
-          }
-        }
+        const existing = state.rtPlusTags.get(id);
+        state.rtPlusTags.set(id, { 
+          contentType: id, 
+          start: start, 
+          length: len, 
+          label: RT_PLUS_LABELS[id] || `TAG ${id}`, 
+          text: existing ? existing.text : "", 
+          isCached: false, 
+          timestamp: Date.now() 
+        });
+        state.isDirty = true;
       };
       if (!isNaN(g3)) {
         const t1Id = (g2Spare << 3) | ((g3 >> 13) & 0x07);
@@ -2298,19 +2391,13 @@ const App: React.FC = () => {
       const g2Spare = g2 & 0x07;
       const processErtTag = (id: number, start: number, len: number) => {
         if (id === 0) return;
-        const ertStr = renderRdsBuffer(state.ertBuffer, true).split('\x0D')[0];
-        const length = len + 1;
-        // Always store the tag definition, even if text is currently incomplete
-        let text = "";
-        if (start < ertStr.length) {
-          text = ertStr.substring(start, start + length).replace(/[\x00-\x1F]/g, '').trim();
-        }
+        const existing = state.ertPlusTags.get(id);
         state.ertPlusTags.set(id, {
           contentType: id,
           start: start,
           length: len,
           label: RT_PLUS_LABELS[id] || `TAG ${id}`,
-          text: text,
+          text: existing ? existing.text : "",
           isCached: false,
           timestamp: Date.now()
         });
@@ -2399,6 +2486,30 @@ const App: React.FC = () => {
         const now = Date.now();
         const currentPs = renderRdsBuffer(state.psBuffer, false, false, true);
         const currentPtyn = renderRdsBuffer(state.ptynBuffer);
+        const activeRtStr = state.abFlag ? renderRdsBuffer(state.rtBuffer1, false, true) : renderRdsBuffer(state.rtBuffer0, false, true);
+        
+        state.rtPlusTags.forEach(tag => {
+          if (!tag.isCached) {
+            if (tag.start < activeRtStr.length) {
+              const newText = activeRtStr.substring(tag.start, tag.start + tag.length + 1).replace(/[\x00-\x1F]/g, '').trim();
+              if (newText.length > 0) {
+                tag.text = newText;
+              }
+            }
+          }
+        });
+
+        const activeErtStr = renderRdsBuffer(state.ertBuffer, false, true);
+        state.ertPlusTags.forEach(tag => {
+          if (!tag.isCached) {
+            if (tag.start < activeErtStr.length) {
+              const newText = activeErtStr.substring(tag.start, tag.start + tag.length + 1).replace(/[\x00-\x1F]/g, '').trim();
+              if (newText.length > 0) {
+                tag.text = newText;
+              }
+            }
+          }
+        });
         
         if (currentPs !== state.psCandidateString) { 
           state.psCandidateString = currentPs; 
@@ -2442,7 +2553,12 @@ const App: React.FC = () => {
         }
         const afBLists: Record<string, string[]> = {}; 
         state.afBMap.forEach((entry, key) => {
-          afBLists[key] = Array.from(entry.afs);
+          afBLists[key] = Array.from(entry.afs || []).map(f => {
+            if (entry.regionalAfs && entry.regionalAfs.has(f)) {
+              return `${f} [REG]`;
+            }
+            return f;
+          });
         });
         const cBer = berHistoryRef.current.length > 0 ? (berHistoryRef.current.reduce((a, b) => a + b, 0) / berHistoryRef.current.length) * 100 : 0;
         const eonData: Record<string, EonNetwork> = {}; 
@@ -2472,7 +2588,7 @@ const App: React.FC = () => {
           localTimeOffset: state.localTimeOffset,
           utcTime: state.utcTime, 
           textAbFlag: state.abFlag, 
-          rtPlus: (Array.from(state.rtPlusTags.values()) as RtPlusTag[]).sort((a, b) => a.contentType - b.contentType), 
+          rtPlus: (Array.from(state.rtPlusTags.values()) as RtPlusTag[]).filter(t => t.text && t.text.length > 0).sort((a, b) => a.contentType - b.contentType), 
           rtPlusItemRunning: state.rtPlusItemRunning, 
           rtPlusItemToggle: state.rtPlusItemToggle,
           hasOda: state.hasOda, 
@@ -2494,13 +2610,14 @@ const App: React.FC = () => {
           ihHistory: [...state.ihHistoryBuffer],
           rpHistory: [...state.rpHistoryBuffer],
           ertHistory: [...state.ertHistoryBuffer],
-          ertPlusTags: (Array.from(state.ertPlusTags.values()) as RtPlusTag[]).sort((a, b) => a.contentType - b.contentType),
+          ertPlusTags: (Array.from(state.ertPlusTags.values()) as RtPlusTag[]).filter(t => t.text && t.text.length > 0).sort((a, b) => a.contentType - b.contentType),
           ps: currentPs, 
           longPs: renderRdsBuffer(state.lpsBuffer, true), 
           rtA: renderRdsBuffer(state.rtBuffer0, false, true), 
           rtB: renderRdsBuffer(state.rtBuffer1, false, true), 
           af: [...state.afSet], 
           afListHead: state.afListHead, 
+          afHeaderCount: state.afHeaderCount,
           afBLists: afBLists, 
           afType: state.afType, 
           ber: (state.currentPi !== "----" && (now - state.piEstablishmentTime) >= 3000 && berHistoryRef.current.length >= 12) ? cBer : -1,
@@ -2766,20 +2883,67 @@ const App: React.FC = () => {
   const setRawRecording = (val: boolean) => {
     if (!val && decoderState.current.isRawRecording) {
         // Download file logic
-        const pi = decoderState.current.currentPi;
         const now = new Date();
         const dateStr = `${now.getDate().toString().padStart(2, '0')}-${(now.getMonth() + 1).toString().padStart(2, '0')}-${now.getFullYear()}`;
         const timeStr = `${now.getHours().toString().padStart(2, '0')}-${now.getMinutes().toString().padStart(2, '0')}-${now.getSeconds().toString().padStart(2, '0')}`;
-        const filename = `RDSExpert Raw Data - ${pi} - ${dateStr} (${timeStr}).rdse`;
         
-        const content = decoderState.current.rawRecordingBuffer.join('\n');
-        const blob = new Blob([content], { type: 'text/plain' });
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = filename;
-        a.click();
-        URL.revokeObjectURL(url);
+        let currentPi = "----";
+        const piGroups = new Map<string, string[]>();
+        const unknownLines: string[] = [];
+
+        for (const line of decoderState.current.rawRecordingBuffer) {
+            const firstWord = line.substring(0, 4);
+            if (firstWord !== '----' && /^[0-9A-F]{4}$/i.test(firstWord)) {
+                currentPi = firstWord.toUpperCase();
+            }
+            if (currentPi === "----") {
+                unknownLines.push(line);
+            } else {
+                if (!piGroups.has(currentPi)) {
+                    piGroups.set(currentPi, []);
+                    if (unknownLines.length > 0) {
+                        piGroups.get(currentPi)!.push(...unknownLines);
+                        unknownLines.length = 0;
+                    }
+                }
+                piGroups.get(currentPi)!.push(line);
+            }
+        }
+
+        if (unknownLines.length > 0) {
+            if (piGroups.size > 0) {
+                // If we ended up with trailing unknown lines, append to the last active PI
+                piGroups.get(currentPi)!.push(...unknownLines);
+            } else {
+                piGroups.set(decoderState.current.currentPi || "----", unknownLines);
+            }
+        }
+
+        if (piGroups.size > 1) {
+            const zip = new JSZip();
+            for (const [pi, lines] of piGroups.entries()) {
+                const filename = `RDSExpert Raw Data - ${pi} - ${dateStr} (${timeStr}).rdse`;
+                zip.file(filename, lines.join('\n'));
+            }
+            zip.generateAsync({ type: 'blob' }).then(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `RDSExpert Raw Data - Recording Session - ${dateStr} (${timeStr}).zip`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        } else {
+            const pi = piGroups.keys().next().value || decoderState.current.currentPi;
+            const content = decoderState.current.rawRecordingBuffer.join('\n');
+            const blob = new Blob([content], { type: 'text/plain' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `RDSExpert Raw Data - ${pi} - ${dateStr} (${timeStr}).rdse`;
+            a.click();
+            URL.revokeObjectURL(url);
+        }
     }
     
     decoderState.current.isRawRecording = val;
@@ -2813,7 +2977,9 @@ const App: React.FC = () => {
     state.rtCandidateString = "";
     state.rtStableSince = 0;
     state.afSet = [];
+    state.afMethodAG3s.clear();
     state.afListHead = null;
+    state.afHeaderCount = null;
     state.afBMap.clear();
     state.currentMethodBGroup = null;
     state.eonMap.clear();
@@ -2920,7 +3086,7 @@ const App: React.FC = () => {
           const hasError = parts.some(p => p.includes('-'));
           
           if (hasError) {
-            if (state.currentPi !== "----" && (Date.now() - state.piEstablishmentTime) >= 3000) {
+            if (state.currentPi !== "----" && (virtualTime - state.piEstablishmentTime) >= 3000) {
               updateBer(true);
               state.groupTotal++;
               state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
@@ -2944,7 +3110,7 @@ const App: React.FC = () => {
             const g4 = parseInt(parts[3], 16);
             
             decodeRdsGroup(g1, g2, g3, g4);
-            if (state.currentPi !== "----" && (Date.now() - state.piEstablishmentTime) >= 3000) {
+            if (state.currentPi !== "----" && (virtualTime - state.piEstablishmentTime) >= 3000) {
               updateBer(false);
             }
           }
@@ -3067,13 +3233,35 @@ const App: React.FC = () => {
                   <i className="fa-solid fa-circle-info text-sm md:text-base"></i>
                 </a>
 
-                <div className="relative order-3 md:order-2 flex-none">
+                <div 
+                  className="relative order-3 md:order-2 flex-none"
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDraggingOverRaw(true);
+                  }}
+                  onDragLeave={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDraggingOverRaw(false);
+                  }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setIsDraggingOverRaw(false);
+                    const file = e.dataTransfer.files?.[0];
+                    if (file) {
+                      setDroppedFile(file);
+                      setShowRawMenu(true);
+                    }
+                  }}
+                >
                   <button 
                     onClick={handlePlayRawClick}
-                    className="bg-slate-900/50 border border-slate-800 rounded px-2 py-1.5 md:px-3 md:py-2 flex items-center justify-center gap-2 text-slate-500 hover:text-blue-400 hover:border-blue-500/50 transition-colors w-full h-full text-[10px] md:text-xs font-bold uppercase"
+                    className={`bg-slate-900/50 border rounded px-2 py-1.5 md:px-3 md:py-2 flex items-center justify-center gap-2 transition-all w-full h-full text-[10px] md:text-xs font-bold uppercase ${isDraggingOverRaw ? 'border-blue-500 bg-blue-500/20 text-blue-400 scale-105 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'border-slate-800 text-slate-500 hover:text-blue-400 hover:border-blue-500/50'}`}
                   >
-                    <i className="fa-solid fa-play"></i>
-                    <span>RAW DATA</span>
+                    <i className={`fa-solid ${isDraggingOverRaw ? 'fa-upload animate-bounce' : 'fa-play'}`}></i>
+                    <span>{droppedFile ? 'CHOOSE PLAYBACK' : (isDraggingOverRaw ? 'DROP FILE' : 'RAW DATA')}</span>
                   </button>
                   {showRawMenu && (
                     <div className="absolute top-full left-0 mt-1 w-40 bg-slate-800 border border-slate-700 rounded shadow-lg z-50 flex flex-col overflow-hidden">
@@ -3081,7 +3269,12 @@ const App: React.FC = () => {
                         onClick={() => {
                           rawPlaybackModeRef.current = 'normal';
                           setShowRawMenu(false);
-                          fileInputRef.current?.click();
+                          if (droppedFile) {
+                            playRawFile(droppedFile);
+                            setDroppedFile(null);
+                          } else {
+                            fileInputRef.current?.click();
+                          }
                         }}
                         className="px-3 py-2 text-left text-[10px] md:text-xs font-bold text-slate-300 hover:bg-slate-700 hover:text-blue-400 transition-colors"
                       >
@@ -3091,7 +3284,12 @@ const App: React.FC = () => {
                         onClick={() => {
                           rawPlaybackModeRef.current = 'instant';
                           setShowRawMenu(false);
-                          fileInputRef.current?.click();
+                          if (droppedFile) {
+                            playRawFile(droppedFile);
+                            setDroppedFile(null);
+                          } else {
+                            fileInputRef.current?.click();
+                          }
                         }}
                         className="px-3 py-2 text-left text-[10px] md:text-xs font-bold text-slate-300 hover:bg-slate-700 hover:text-blue-400 transition-colors"
                       >
@@ -3128,7 +3326,7 @@ const App: React.FC = () => {
                   value={serverUrl} 
                   onChange={(e) => setServerUrl(e.target.value)} 
                   onKeyDown={(e) => e.key === 'Enter' && connect()} 
-                  placeholder="Indicate the webserver URL here" 
+                  placeholder="Enter the webserver URL here" 
                   className="relative w-full bg-slate-950 border border-slate-800 text-slate-200 text-sm rounded px-3 py-2 focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500 placeholder:text-slate-600 font-mono" 
                 />
               </div>
@@ -3205,8 +3403,8 @@ const App: React.FC = () => {
 
         <div className="bg-slate-950 rounded-lg border border-slate-800 font-mono text-xs h-48 shadow-inner flex flex-col">
            <div className="text-slate-400 border-b border-slate-800 p-4 pb-2 font-bold uppercase tracking-wider flex justify-between shrink-0 bg-slate-950 rounded-t-lg z-10">
-             <span>System Logs</span> 
-             <span className="text-[10px] opacity-50">Real-time Events</span>
+             <span>System & Connections Logs</span> 
+
            </div>
            
            <div className="space-y-1 overflow-y-auto p-4 pt-2 custom-scrollbar flex-1">
@@ -3214,7 +3412,7 @@ const App: React.FC = () => {
                <div className="text-slate-400 italic p-2 opacity-80">No events recorded.</div>
              )}
              {logs.map((l, i) => ( 
-               <div key={i} className={`border-b border-slate-900/50 pb-0.5 last:border-0 flex gap-3 ${getLogColor(l.type)}`}> 
+               <div key={i} className={`flex gap-3 pb-0.5 ${getLogColor(l.type)}`}> 
                  <span className="text-slate-500 shrink-0">[{l.time}]</span> 
                  <span>{l.message}</span> 
                </div> 
