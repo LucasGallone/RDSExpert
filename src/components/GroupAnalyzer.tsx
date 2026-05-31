@@ -1,7 +1,8 @@
 
-import React, { useRef, useEffect, useState } from 'react';
+import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
 import { RdsData } from '../types';
 import { ODA_MAP } from '../constants';
+import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
 
 interface GroupAnalyzerProps {
   data: RdsData;
@@ -70,6 +71,21 @@ const GROUP_COLORS: Record<string, string> = {
     "--": "text-slate-400 font-bold opacity-50",
     // Default fallback
     "default": "text-slate-200"
+};
+
+const HEX_COLORS: Record<string, string> = {
+    "text-slate-300": "#cbd5e1",
+    "text-slate-400": "#94a3b8",
+    "text-cyan-400": "#22d3ee",
+    "text-green-500": "#22c55e",
+    "text-pink-500": "#ec4899",
+    "text-violet-400": "#a78bfa",
+    "text-red-500": "#ef4444",
+    "text-orange-400": "#fb923c",
+    "text-yellow-400": "#facc15",
+    "text-teal-400": "#2dd4bf",
+    "text-slate-200": "#e2e8f0",
+    "text-slate-400 font-bold opacity-50": "#94a3b8"
 };
 
 const GROUP_DESCRIPTIONS: Record<string, string> = {
@@ -181,7 +197,8 @@ const GroupStatItem: React.FC<{
     hasData: boolean;
     bgStyle: string;
     colorClass: string;
-}> = ({ grp, count, percentage, hasData, bgStyle, colorClass }) => {
+    onClick?: () => void;
+}> = ({ grp, count, percentage, hasData, bgStyle, colorClass, onClick }) => {
     const [showTooltip, setShowTooltip] = useState(false);
     const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -206,6 +223,7 @@ const GroupStatItem: React.FC<{
             className={`relative flex flex-col items-center justify-center p-1.5 rounded border ${bgStyle} transition-colors group cursor-default`}
             onMouseEnter={handleMouseEnter}
             onMouseLeave={handleMouseLeave}
+            onClick={onClick}
         >
             {/* Wrap content in a div to apply opacity only to content, not the tooltip */}
             <div className={`flex flex-col items-center w-full ${!hasData ? 'opacity-50' : ''}`}>
@@ -224,6 +242,136 @@ const GroupStatItem: React.FC<{
             )}
         </div>
     );
+};
+
+const ChartBody = React.memo(({ chartData, onClose }: { chartData: any[], onClose: () => void }) => {
+  const renderLegend = React.useCallback((props: any) => {
+    const { payload } = props;
+    const sortedPayload = [...(payload || [])].sort((a: any, b: any) => ALL_GROUPS.indexOf(a.value) - ALL_GROUPS.indexOf(b.value));
+    
+    return (
+      <div className="flex flex-wrap justify-center items-center gap-x-4 gap-y-2 text-xs pt-6">
+        {sortedPayload.map((entry, index) => (
+          <div key={`item-${index}`} className="flex items-center gap-1.5">
+            <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: entry.color }} />
+            <span className="text-slate-300">{entry.value}</span>
+          </div>
+        ))}
+      </div>
+    );
+  }, []);
+
+  return (
+  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+    <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full max-w-5xl h-[80vh] flex flex-col">
+      <div className="flex items-center justify-between p-4 border-b border-slate-800">
+        <h2 className="text-slate-200 font-bold uppercase tracking-wider text-sm flex items-center gap-2">
+          <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg>
+          Group Distribution Chart
+        </h2>
+        <button onClick={onClose} className="text-slate-400 hover:text-white transition-colors">
+           <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+        </button>
+      </div>
+      <div className="flex-1 p-6 flex flex-col md:flex-row gap-6 overflow-hidden">
+        {/* Pie Chart */}
+        <div className="flex-1 min-h-[300px]">
+          <ResponsiveContainer width="100%" height="100%">
+            <PieChart>
+              <Pie
+                data={chartData}
+                cx="50%"
+                cy="50%"
+                innerRadius={60}
+                outerRadius={120}
+                paddingAngle={2}
+                dataKey="percentage"
+                nameKey="name"
+                isAnimationActive={false}
+              >
+                {chartData.map((entry, index) => (
+                  <Cell key={`cell-${index}`} fill={entry.fill} />
+                ))}
+              </Pie>
+              <RechartsTooltip 
+                separator=": "
+                formatter={(value: any, name: any, props: any) => [`${props.payload.percentage}%`, `Group ${name}`]}
+                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' }}
+                itemStyle={{ color: '#f8fafc' }}
+              />
+              <Legend content={renderLegend} />
+            </PieChart>
+          </ResponsiveContainer>
+        </div>
+        {/* Bar Chart */}
+        <div className="flex-1 min-h-[300px]">
+           <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                <XAxis type="number" domain={[0, 100]} stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `${val}%`} />
+                <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={10} width={40} />
+                <RechartsTooltip 
+                  cursor={{fill: '#1e293b'}}
+                  labelFormatter={() => ''}
+                  labelStyle={{ display: 'none', margin: 0 }}
+                  separator=": "
+                  formatter={(value: any, name: any, props: any) => [`${props.payload.percentage}%`, `Group ${props.payload.name}`]}
+                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc', padding: '10px' }}
+                  itemStyle={{ color: '#f8fafc' }}
+                />
+                <Bar dataKey="percentage" radius={[0, 4, 4, 0]} isAnimationActive={false}>
+                  {chartData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={entry.fill} />
+                  ))}
+                </Bar>
+              </BarChart>
+           </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  </div>
+  );
+});
+
+const GroupDistributionChart: React.FC<{
+  data: RdsData;
+  onClose: () => void;
+}> = ({ data, onClose }) => {
+  const [chartData, setChartData] = useState<any[]>([]);
+  const dataRef = useRef(data);
+
+  // We assign current data continuously without causing re-renders of the chart
+  dataRef.current = data;
+
+  // Update immediately on mount, then every 3 seconds
+  useEffect(() => {
+    const updateData = () => {
+      const currentData = dataRef.current;
+      const errorCount = currentData.groupCounts["--"] || 0;
+      const validTotal = Math.max(0, currentData.groupTotal - errorCount);
+      
+      let newData = ALL_GROUPS.map(grp => {
+        const count = currentData.groupCounts[grp] || 0;
+        const percentage = validTotal > 0 ? ((count / validTotal) * 100).toFixed(1) : "0.0";
+        return {
+          name: grp,
+          count: count,
+          percentage: parseFloat(percentage),
+          fill: HEX_COLORS[GROUP_COLORS[grp] || GROUP_COLORS["default"]] || "#cbd5e1"
+        };
+      }).filter(item => item.percentage > 0);
+      
+      // Sort by percentage descending
+      newData.sort((a, b) => b.percentage - a.percentage);
+      setChartData(newData);
+    };
+
+    updateData(); // immediate
+    const interval = setInterval(updateData, 3000);
+    return () => clearInterval(interval);
+  }, []);
+
+  return <ChartBody chartData={chartData} onClose={onClose} />;
 };
 
 export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onToggle, onReset }) => {
@@ -249,6 +397,8 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
   // Detailed Viewer State
   const [detailGroup, setDetailGroup] = useState<string>(() => localStorage.getItem('rds_detail_group') || "0A");
   const [detailLogs, setDetailLogs] = useState<LogItem[]>([]);
+  const [showChart, setShowChart] = useState<boolean>(false);
+  const handleCloseChart = useCallback(() => setShowChart(false), []);
 
   // ODA Detection State
   const [odaLogs, setOdaLogs] = useState<string[]>([]);
@@ -312,7 +462,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                   const groupVer = (appGroupCode & 1) ? 'B' : 'A';
                   const targetGroup = `${groupNum}${groupVer}`;
                   
-                  const odaName = ODA_MAP[aidHex] || "Unknown ODA";
+                  const odaName = ODA_MAP[aidHex] || "Unknown ODA!";
 
                   if (aidHex === '0093') {
                       dabTargetGroupRef.current = targetGroup;
@@ -560,9 +710,9 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
           <div className="flex items-center gap-3">
               <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002 2m0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z" /></svg>
-                Groups Monitor
+                Group Monitor
               </h3>
-              {active && !isPaused && <span className="text-[10px] text-green-500 font-mono animate-pulse">● LIVE</span>}
+              {active && !isPaused && <span className="text-[10px] text-green-500 font-mono animate-pulse">● RUNNING</span>}
               {active && isPaused && <span className="text-[10px] text-yellow-500 font-mono">● PAUSED</span>}
           </div>
           
@@ -571,7 +721,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                   onClick={() => toggleMode('DETAIL')}
                   className={`px-2 py-1 text-[10px] uppercase font-bold rounded border transition-colors ${viewMode === 'DETAIL' ? 'bg-blue-900 text-blue-200 border-blue-500' : 'bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700'}`}
               >
-                  {viewMode === 'DETAIL' ? 'CLOSE GROUPS CONTENT' : 'SHOW GROUPS CONTENT'}
+                  {viewMode === 'DETAIL' ? 'CLOSE GROUP CONTENT' : 'SHOW GROUP CONTENT'}
               </button>
 
               <button
@@ -674,7 +824,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                          ))}
                          {detailLogs.length === 0 && (
                              <div className="text-slate-700 italic text-center mt-10">
-                                {isPaused ? 'Viewer Paused' : `Waiting for ${detailGroup} groups...`}
+                                {isPaused ? 'Viewer Paused' : `Waiting for Group ${detailGroup} data...`}
                              </div>
                          )}
                      </div>
@@ -711,7 +861,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                                  ))}
                                  {(!hexLogs[colIdx] || hexLogs[colIdx].length === 0) && (
                                      <div className="text-slate-700 italic text-center mt-10">
-                                         {isPaused ? 'Paused' : 'Waiting...'}
+                                         
                                      </div>
                                  )}
                              </div>
@@ -723,7 +873,16 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
             {/* Statistics Section (Always visible) */}
             <div className="p-4 bg-slate-900/50">
                 <div className="flex items-center justify-between mb-3">
-                     <span className="text-[10px] uppercase font-bold text-slate-500">Group Distribution Statistics</span>
+                     <div className="flex items-center gap-2">
+                         <span className="text-[10px] uppercase font-bold text-slate-500">Group Distribution Statistics</span>
+                         <button 
+                            onClick={() => setShowChart(true)}
+                            className="bg-slate-800 hover:bg-slate-700 text-slate-300 p-1 rounded transition-colors"
+                            title="Show Group Distribution Chart"
+                         >
+                            <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M11 3.055A9.001 9.001 0 1020.945 13H11V3.055z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M20.488 9H15V3.512A9.025 9.025 0 0120.488 9z" /></svg>
+                         </button>
+                     </div>
                      <span className="text-[10px] uppercase font-bold text-slate-400">Total Packets: <span className="text-white">{data.groupTotal.toLocaleString()}</span></span>
                 </div>
                 
@@ -750,6 +909,12 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                                 hasData={hasData}
                                 bgStyle={bgStyle}
                                 colorClass={getGroupColor(grp)}
+                                onClick={() => {
+                                    if (viewMode !== 'DETAIL') {
+                                        setViewMode('DETAIL');
+                                    }
+                                    updateDetailGroup(grp);
+                                }}
                             />
                         );
                     })}
@@ -760,10 +925,11 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
       
       {!active && (
          <div className="p-8 text-center text-slate-400 italic text-xs bg-[#0f172a]">
-            Groups Monitor is not currently enabled. Click "Start" to visualize the stream and initiate the analysis.
+            Group Monitor is currently disabled. Click "Start" to view and analyze the stream.
          </div>
       )}
 
+      {showChart && <GroupDistributionChart data={data} onClose={handleCloseChart} />}
     </div>
   );
 };
