@@ -114,12 +114,39 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     // Numerical sort helper for AF list, respecting head if present
     const getSortedAfList = (head: string | null, list: string[]) => {
       const unique = Array.from(new Set(list));
-      const others = unique.filter(f => f !== head).sort((a,b) => parseFloat(a) - parseFloat(b));
+      const headFloat = head ? parseFloat(head) : NaN;
+      const others = unique.filter(f => isNaN(headFloat) || parseFloat(f) !== headFloat).sort((a,b) => parseFloat(a) - parseFloat(b));
       return head ? [head, ...others] : unique.sort((a,b) => parseFloat(a) - parseFloat(b));
     };
 
+    // Numerical sort helper for Method A AF list, respecting head and showing repetition counts
+    const getSortedAfListWithCounts = (head: string | null, list: string[]) => {
+      const counts: Record<string, number> = {};
+      for (const freq of list) {
+        counts[freq] = (counts[freq] || 0) + 1;
+      }
+      const unique = Array.from(new Set(list));
+      const headFloat = head ? parseFloat(head) : NaN;
+      const others = unique.filter(f => isNaN(headFloat) || parseFloat(f) !== headFloat).sort((a,b) => parseFloat(a) - parseFloat(b));
+
+      const formatFreqWithCount = (f: string, isHeadFreq: boolean) => {
+        const rawCount = counts[f] || 0;
+        const displayCount = isHeadFreq ? rawCount - 1 : rawCount;
+        if (displayCount > 1) {
+          return `${f} (x${displayCount})`;
+        }
+        return f;
+      };
+
+      if (head) {
+        return [formatFreqWithCount(head, true), ...others.map(f => formatFreqWithCount(f, false))];
+      } else {
+        return unique.sort((a,b) => parseFloat(a) - parseFloat(b)).map(f => formatFreqWithCount(f, false));
+      }
+    };
+
     // Header with new signal information block
-    let content = `RDSExpert - Text Report\n`;
+    let content = `RDSExpert - Data Export\n`;
     content += `Generated on: ${now}\n`;
     content += `------------------------------------\n`;
     content += `${freqStr} MHz > ${tx} - ${city}\n`;
@@ -131,12 +158,14 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     // 1. Main RDS information
     content += `[1] MAIN RDS INFORMATION\n`;
     content += `------------------------\n`;
+    const protectRdsControls = (t: string) => t.replace(/\n/g, '\uE00A').replace(/\r/g, '\uE00D');
+
     content += `PI:           ${data.pi}\n`;
     content += `PS:           ${psFormatted}\n`;
     content += `PTY:          ${ptyName} [${data.pty}]\n\n`;
     const ptynRaw = (data.ptyn || "").replace(/\r/g, '');
     content += `PTYN:         ${ptynRaw.trim() ? ptynRaw : "N/A"}\n`;
-    const lpsRaw = (data.longPs || "").replace(/\r/g, '');
+    const lpsRaw = protectRdsControls(data.longPs || "");
     content += `Long PS:      ${lpsRaw.trim() ? lpsRaw : "N/A"}\n`;
     
     const piFirstVal = data.pi && data.pi.length >= 1 ? data.pi.charAt(0).toUpperCase() : null;
@@ -158,8 +187,8 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     // 3. Radiotext
     content += `[3] RADIOTEXT\n`;
     content += `-------------\n`;
-    const rtARaw = (data.rtA || "");
-    const rtBRaw = (data.rtB || "");
+    const rtARaw = protectRdsControls(data.rtA || "");
+    const rtBRaw = protectRdsControls(data.rtB || "");
     const isRtActive = (data.groupCounts['2A'] || 0) > 0 || (data.groupCounts['2B'] || 0) > 0;
 
     if (!isRtActive) {
@@ -179,12 +208,15 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     if (hasAfB) {
         content += `Method: ${data.afType}\n`;
         Object.entries(data.afBLists).forEach(([head, list]) => {
-            const sortedSub = getSortedAfList(head, list as string[]);
+            const mappedList = (list as string[]).map(f => f.replace(' [REG]', ' (REG)'));
+            const sortedSub = getSortedAfList(head, mappedList);
             content += `List - ${head}: [${sortedSub.join(' / ')}]\n`;
         });
     } else if (hasAfA) {
-        content += `Method: ${data.afType}\n`;
-        const sortedA = getSortedAfList(data.afListHead, data.af);
+        const expected = data.afHeaderCount;
+        const decoded = data.af.length;
+        content += `Method: ${data.afType} (Expected: ${expected !== null ? expected : "?"} | Decoded: ${decoded})\n`;
+        const sortedA = getSortedAfListWithCounts(data.afListHead, data.af);
         content += `List: [${sortedA.join(' / ')}]\n`;
     } else {
         content += `No AF list found.\n`;
@@ -231,12 +263,12 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
             content += `  - ${oda.name} [AID: ${oda.aid}] on Group ${oda.group}${oda.extra || ""}\n`;
         });
     } else {
-        content += `  No ODA AID detected on Group 3A.\n`;
+        content += `  No ODA AID detected in Group 3A.\n`;
     }
     content += `\n`;
 
-    // 8. GROUPS COUNTER
-    content += `[8] GROUPS COUNTER\n`;
+    // 8. GROUP COUNTER
+    content += `[8] GROUP COUNTER\n`;
     content += `------------------\n`;
     const errorCount = data.groupCounts["--"] || 0;
     const validTotal = Math.max(0, data.groupTotal - errorCount);
@@ -261,8 +293,8 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     }
     content += `\n`;
 
-    // 9. GROUPS SEQUENCE
-    content += `[9] GROUPS SEQUENCE (LAST 100 GROUPS DECODED)\n`;
+    // 9. GROUP SEQUENCE
+    content += `[9] GROUP SEQUENCE (LAST 100 GROUPS DECODED)\n`;
     content += `-------------------------------------------\n`;
     if (data.groupSequence && data.groupSequence.length > 0) {
         const last100 = data.groupSequence.slice(-100);
@@ -276,7 +308,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     content += `[10] RADIOTEXT HISTORY\n`;
     content += `----------------------\n`;
     [...data.rtHistory].reverse().forEach(h => {
-        content += `  [${h.time}] ${h.text}\n`;
+        content += `  [${h.time}] ${protectRdsControls(h.text)}\n`;
     });
     content += `\n`;
 
@@ -336,7 +368,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     const nowObj = new Date();
     const now = `${nowObj.toLocaleDateString('fr-FR')} at ${nowObj.toLocaleTimeString('fr-FR')}`;
     const srv = overrideServerName !== undefined ? overrideServerName : serverName;
-    let content = `RDSExpert - Detailed Bandscan Report\n`;
+    let content = `RDSExpert - Bandscan Export\n`;
     if (srv) content += `Server: ${srv}\n`;
     content += `Generated on: ${now}\n`;
     content += `==================================================\n\n`;
@@ -855,9 +887,14 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         
         // Transform control characters (except \n) into readable <XX> technical codes for preview and TXT export
         filtered = filtered.split('').map(char => {
-            const code = char.charCodeAt(0);
+            const charCode = char.charCodeAt(0);
+            let code = charCode;
+            if (code === 0xE00A) { code = 10; }
+            if (code === 0xE00D) { code = 13; }
             if (code < 32 && code !== 10) { // Preserve \n (Line Feed)
                 return `<${code.toString(16).toUpperCase().padStart(2, '0')}>`;
+            } else if (charCode === 0xE00A) {
+                return `<0A>`;
             }
             return char;
         }).join('');
@@ -879,7 +916,10 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         const dateStr = now.toLocaleDateString('fr-FR').replace(/\//g, '-'); // DD-MM-YYYY
         const timeStr = now.toLocaleTimeString('fr-FR', { hour12: false }).replace(/:/g, '-'); // HH-MM-SS
         const piSafe = pi.trim() || "XXXX";
-        const filename = `RDSExpert_${piSafe}_${dateStr}_${timeStr}.txt`;
+        const isBandscan = bandscanEntries && bandscanEntries.length > 1;
+        const filename = isBandscan 
+            ? `RDSExpert Bandscan - ${dateStr} - ${timeStr}.txt`
+            : `RDSExpert Data Export - ${piSafe} - ${dateStr} - ${timeStr}.txt`;
 
         // Correction de la regex pour préserver les sauts de ligne (\n, code 0x0A) lors de l'export TXT
         const blob = new Blob([displayContent.replace(/[\x00-\x09\x0B-\x1F]/g, '')], { type: 'text/plain' });
@@ -911,7 +951,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             let currentWord = "";
             for (let i = 0; i < text.length; i++) {
                 const char = text[i];
-                if (char.charCodeAt(0) < 32 || char === ' ' || char === '-') {
+                if (char.charCodeAt(0) < 32 || char.charCodeAt(0) === 0xE00A || char.charCodeAt(0) === 0xE00D || char === ' ' || char === '-') {
                     if (currentWord) {
                         tokens.push(currentWord);
                         currentWord = "";
@@ -926,8 +966,11 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             for (const token of tokens) {
                 let tokenWidth = 0;
                 doc.setFontSize(fontSize);
-                if (token.length === 1 && token.charCodeAt(0) < 32) {
-                    const hex = `<${token.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}>`;
+                if (token.length === 1 && (token.charCodeAt(0) < 32 || token.charCodeAt(0) === 0xE00A || token.charCodeAt(0) === 0xE00D)) {
+                    let codeVal = token.charCodeAt(0);
+                    if (codeVal === 0xE00A) codeVal = 10;
+                    if (codeVal === 0xE00D) codeVal = 13;
+                    const hex = `<${codeVal.toString(16).toUpperCase().padStart(2, '0')}>`;
                     doc.setFontSize(7.5);
                     tokenWidth = doc.getTextWidth(hex) + 2.0; // 1.2 + 0.8
                     doc.setFontSize(fontSize);
@@ -945,8 +988,11 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                     }
                 }
 
-                if (token.length === 1 && token.charCodeAt(0) < 32) {
-                    const hex = `<${token.charCodeAt(0).toString(16).toUpperCase().padStart(2, '0')}>`;
+                if (token.length === 1 && (token.charCodeAt(0) < 32 || token.charCodeAt(0) === 0xE00A || token.charCodeAt(0) === 0xE00D)) {
+                    let codeVal = token.charCodeAt(0);
+                    if (codeVal === 0xE00A) codeVal = 10;
+                    if (codeVal === 0xE00D) codeVal = 13;
+                    const hex = `<${codeVal.toString(16).toUpperCase().padStart(2, '0')}>`;
                     doc.setFontSize(7.5);
                     const boxW = doc.getTextWidth(hex) + 1.2;
                     doc.setFillColor(220, 220, 220);
@@ -1126,10 +1172,23 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 doc.setFontSize(10); 
                 if (entry.isDynamic) {
                     doc.setTextColor(126, 34, 206); // Violet (Purple 700)
+                } else if (entry.ps === "--------") {
+                    doc.setTextColor(148, 163, 184); // Slate 400
                 } else {
                     doc.setTextColor(15, 23, 42); // Slate 900
                 }
-                doc.text(psFormatted, 55, yPos);
+                
+                if (entry.ps === "--------") {
+                    let cx = 55;
+                    for (let i = 0; i < 8; i++) {
+                        doc.text("-", cx, yPos);
+                        cx += 2.1; 
+                    }
+                } else {
+                    doc.text(psFormatted, 55, yPos);
+                }
+                
+                doc.setFont("helvetica", "normal");
                 doc.setTextColor(15, 23, 42); // Reset color to default Slate 900
 
                 // Column MOD. at 84 (Stereo Icon)
@@ -1365,7 +1424,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             const sections = pdfSource.split(/\n\s*\n/).filter(s => !s.includes('MHz >') && !s.includes('Generated on:') && !s.includes('km -') && !s.includes('Modulation:') && !s.includes('Signal strength:')); 
             
             sections.forEach((section, sIdx) => {
-                const lines = section.split('\n').filter(l => l.trim().length > 0 && !l.includes('-----') && !l.includes('===='));
+                const lines = section.split('\n').filter(l => l.trim().length > 0 && !l.trim().startsWith('-----') && !l.trim().startsWith('===='));
                 if (lines.length === 0) return;
 
                 let sectionTitle = "";
@@ -1464,7 +1523,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                                     currentX += doc.getTextWidth(sep);
                                 }
                             });
-                        } else if (sectionTitle.includes('[3]')) {
+                        } else if (sectionTitle.includes('[3]') || label === "Long PS:") {
                             detailY = drawTextWithCodes(value, valueX, detailY, 9, 195);
                         } else {
                             const wrappedValue = doc.splitTextToSize(value, maxWidth);
@@ -1565,7 +1624,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         const nowFile = new Date();
         const dateStrFile = nowFile.toLocaleDateString('fr-FR').replace(/\//g, '-');
         const timeStrFile = nowFile.toLocaleTimeString('fr-FR', { hour12: false }).replace(/:/g, '-');
-        const filename = isBandscan ? `RDSExpert Bandscan Report - ${dateStrFile} - ${timeStrFile}.pdf` : `RDSExpert Report - ${pi.trim() || "XXXX"} - ${dateStrFile} - ${timeStrFile}.pdf`;
+        const filename = isBandscan ? `RDSExpert Bandscan - ${dateStrFile} - ${timeStrFile}.pdf` : `RDSExpert Data Export - ${pi.trim() || "XXXX"} - ${dateStrFile} - ${timeStrFile}.pdf`;
         doc.save(filename);
     };
 
