@@ -143,6 +143,7 @@ interface DecoderState {
   // Raw Recording
   isRawRecording: boolean;
   rawRecordingBuffer: string[];
+  rawRecordingPacketCount: number;
 
   // Raw Playback
   isPlayingRaw: boolean;
@@ -700,6 +701,7 @@ const App: React.FC = () => {
     // Raw Recording
     isRawRecording: false,
     rawRecordingBuffer: [],
+    rawRecordingPacketCount: 0,
 
     // Raw Playback
     isPlayingRaw: false,
@@ -1205,6 +1207,7 @@ const App: React.FC = () => {
     const state = decoderState.current;
     
     state.currentPi = "----";
+    state.rawRecordingPacketCount = 0;
     state.piCandidate = "----";
     state.piCounter = 0;
     state.piEstablishmentTime = 0;
@@ -1356,6 +1359,7 @@ const App: React.FC = () => {
     if (state.piCounter >= 4 || (state.currentPi === "----" && state.piCounter >= 1)) {
       if (state.piCandidate !== state.currentPi) {
         state.currentPi = state.piCandidate;
+        state.rawRecordingPacketCount = 0;
         
         state.psBuffer.fill('-');
         state.lpsBuffer.fill(' ');
@@ -1483,6 +1487,7 @@ const App: React.FC = () => {
     if (state.isRawRecording) {
       const hexLine = [g1, g2, g3, g4].map(b => b.toString(16).toUpperCase().padStart(4, '0')).join(' ');
       state.rawRecordingBuffer.push(`${hexLine} ${getRawTimestamp()}`);
+      state.rawRecordingPacketCount++;
     }
 
     state.groupCounts[groupStr] = (state.groupCounts[groupStr] || 0) + 1;
@@ -2709,6 +2714,7 @@ const App: React.FC = () => {
           bandscanEntries: [...state.bandscanEntries],
           isRawRecording: state.isRawRecording,
           rawRecordingBuffer: [...state.rawRecordingBuffer],
+          rawRecordingPacketCount: state.rawRecordingPacketCount,
           isPlayingRaw: state.isPlayingRaw,
           rawPlaybackCurrent: state.rawPlaybackCurrent,
           rawPlaybackTotal: state.rawPlaybackTotal,
@@ -2867,6 +2873,7 @@ const App: React.FC = () => {
               });
               if (s.isRawRecording) {
                 s.rawRecordingBuffer.push(`---- ---- ---- ---- ${getRawTimestamp()}`);
+                s.rawRecordingPacketCount++;
               }
               decoderState.current.isDirty = true; 
             } else { 
@@ -3025,6 +3032,7 @@ const App: React.FC = () => {
     decoderState.current.isRawRecording = val;
     if (val) {
         decoderState.current.rawRecordingBuffer = [];
+        decoderState.current.rawRecordingPacketCount = 0;
     }
     decoderState.current.isDirty = true;
   };
@@ -3179,6 +3187,7 @@ const App: React.FC = () => {
             });
             if (state.isRawRecording) {
               state.rawRecordingBuffer.push(`---- ---- ---- ---- ${getRawTimestamp()}`);
+              state.rawRecordingPacketCount++;
             }
           } else {
             const g1 = parseInt(parts[0], 16);
@@ -3256,6 +3265,7 @@ const App: React.FC = () => {
           });
           if (state.isRawRecording) {
             state.rawRecordingBuffer.push(`---- ---- ---- ---- ${getRawTimestamp()}`);
+            state.rawRecordingPacketCount++;
           }
         } else {
           const g1 = parseInt(parts[0], 16);
