@@ -76,6 +76,7 @@ export interface RdsData {
   // Raw Recording
   isRawRecording: boolean;
   rawRecordingBuffer: string[];
+  rawRecordingPacketCount: number;
 
   // Raw Playback
   isPlayingRaw: boolean;
