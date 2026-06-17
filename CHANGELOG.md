@@ -1,5 +1,9 @@
 # RDSExpert Changelog
 
+### --- 17/06/2026 ---
+- Added a "Time Error" indicator as a tooltip for the "UTC CT" field, allowing comparison of the time sent to group 4A with the user's computer time. This allows verification of whether group 4A's clock is ahead, behind, or correct.
+- Added a timestamp to each line of RDS blocks in the "RAW DATA" recording files. This allows the time sent via the CT function (Group 4A) to be compared to the exact time on the user's computer at the time of recording.
+
 ### --- 31/05/2026 ---
 - Added a confirmation dialog box when closing the tab, if a bandscan recording is in progress, to prevent accidental closures.
 - Added a drag-and-drop function to the "Raw Data" file playback button to allow the user to more easily and quickly select a file to play.
