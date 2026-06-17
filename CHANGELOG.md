@@ -1,6 +1,7 @@
 # RDSExpert Changelog
 
 ### --- 17/06/2026 ---
+- Add a real-time counter of the number of packets recorded on the "RECORD RAW DATA" button when this function is active.
 - Added a "Time Error" indicator as a tooltip for the "UTC CT" field, allowing comparison of the time sent to group 4A with the user's computer time. This allows verification of whether group 4A's clock is ahead, behind, or correct.
 - Added a timestamp to each line of RDS blocks in the "RAW DATA" recording files. This allows the time sent via the CT function (Group 4A) to be compared to the exact time on the user's computer at the time of recording.
 
