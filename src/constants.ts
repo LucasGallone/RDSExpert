@@ -1905,6 +1905,7 @@ export const INITIAL_RDS_DATA: RdsData = {
   bandscanEntries: [],
   isRawRecording: false,
   rawRecordingBuffer: [],
+  rawRecordingPacketCount: 0,
   isPlayingRaw: false,
   rawPlaybackCurrent: 0,
   rawPlaybackTotal: 0
