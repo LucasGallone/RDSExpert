@@ -332,7 +332,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
             className={`px-2 py-1 text-[10px] font-bold border rounded uppercase transition-all min-w-[120px] flex items-center justify-center gap-2 ${data.isRawRecording ? 'bg-red-950/60 text-red-400 border-red-500/80 animate-[pulse_2s_cubic-bezier(0.4,0,0.6,1)_infinite]' : 'bg-slate-900/40 text-slate-500 border-slate-800 hover:bg-slate-800/60 hover:text-slate-300 hover:border-slate-700'}`}
           >
             <div className={`w-2 h-2 rounded-full transition-colors ${data.isRawRecording ? 'bg-red-500 shadow-[0_0_8px_rgba(239,68,68,0.8)]' : 'bg-slate-600'}`}></div>
-            RECORD RAW DATA
+            {data.isRawRecording ? `RECORD RAW DATA [${data.rawRecordingPacketCount}]` : 'RECORD RAW DATA'}
           </button>
           <button 
             onClick={onReset}
