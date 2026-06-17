@@ -39,6 +39,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
 
   // State for CT Offset Tooltip
   const [showCtTooltip, setShowCtTooltip] = useState(false);
+  const [showUtcTooltip, setShowUtcTooltip] = useState(false);
 
   // State for RT A/B Tooltips
   const [showRtATooltip, setShowRtATooltip] = useState(false);
@@ -588,9 +589,19 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
           </div>
           
           {/* UTC CT */}
-          <div className="flex-1 flex items-center space-x-2 bg-slate-900/40 rounded p-2 border border-slate-800/50 justify-center">
+          <div 
+            className="flex-1 flex items-center space-x-2 bg-slate-900/40 rounded p-2 border border-slate-800/50 justify-center relative cursor-default group/utc"
+            onMouseEnter={() => setShowUtcTooltip(true)}
+            onMouseLeave={() => setShowUtcTooltip(false)}
+          >
               <span className="text-[10px] font-bold text-slate-500 uppercase mr-2">UTC CT</span>
               <span className={`font-mono text-lg tracking-wide ${data.utcTime ? 'text-white' : 'text-slate-600'}`}>{data.utcTime || "--/--/-- --:--"}</span>
+              {showUtcTooltip && data.utcTime && data.ctTimeError && (
+                <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-4 py-2 bg-slate-800 text-white text-sm font-mono rounded border border-slate-600 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-50 animate-in fade-in zoom-in-95 duration-200 whitespace-nowrap">
+                   {data.ctTimeError === "No time error observed." ? data.ctTimeError : `Time Error: ${data.ctTimeError}`}
+                   <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-600"></div>
+                </div>
+              )}
           </div>
         </div>
 

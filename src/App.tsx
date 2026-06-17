@@ -74,6 +74,7 @@ interface DecoderState {
   localTime: string;
   localTimeOffset: string | null;
   utcTime: string;
+  ctTimeError: string | null;
   pty: number;
   ptynAbFlag: boolean;
   tp: boolean;
@@ -559,6 +560,12 @@ const convertMjd = (mjd: number): { day: number, month: number, year: number } |
   };
 };
 
+const getRawTimestamp = (): string => {
+  const pad = (n: number) => n.toString().padStart(2, '0');
+  const now = new Date();
+  return `@${now.getFullYear()}/${pad(now.getMonth() + 1)}/${pad(now.getDate())} ${pad(now.getHours())}:${pad(now.getMinutes())}:${pad(now.getSeconds())}.${now.getMilliseconds().toString().padStart(3, '0')}`;
+};
+
 const App: React.FC = () => {
   const [rdsData, setRdsData] = useState<RdsData>(INITIAL_RDS_DATA);
   const [serverUrl, setServerUrl] = useState<string>(() => {
@@ -628,6 +635,7 @@ const App: React.FC = () => {
     localTime: "",
     localTimeOffset: null,
     utcTime: "",
+    ctTimeError: null,
     pty: 0,
     ptynAbFlag: false,
     tp: false,
@@ -1266,6 +1274,7 @@ const App: React.FC = () => {
     state.localTime = "";
     state.localTimeOffset = null;
     state.utcTime = "";
+    state.ctTimeError = null;
     state.pty = 0;
     state.ptynAbFlag = false;
     state.tp = false;
@@ -1306,7 +1315,7 @@ const App: React.FC = () => {
     state.isDirty = true;
   }, []);
 
-  const decodeRdsGroup = useCallback((g1: number, g2: number, g3: number, g4: number) => {
+  const decodeRdsGroup = useCallback((g1: number, g2: number, g3: number, g4: number, rawTimestamp?: string) => {
     const state = decoderState.current;
     state.isDirty = true;
 
@@ -1400,6 +1409,7 @@ const App: React.FC = () => {
         state.localTime = "";
         state.localTimeOffset = null;
         state.utcTime = "";
+        state.ctTimeError = null;
         state.pty = 0;
         state.ptynAbFlag = false;
         state.tp = false;
@@ -1472,7 +1482,7 @@ const App: React.FC = () => {
 
     if (state.isRawRecording) {
       const hexLine = [g1, g2, g3, g4].map(b => b.toString(16).toUpperCase().padStart(4, '0')).join(' ');
-      state.rawRecordingBuffer.push(hexLine);
+      state.rawRecordingBuffer.push(`${hexLine} ${getRawTimestamp()}`);
     }
 
     state.groupCounts[groupStr] = (state.groupCounts[groupStr] || 0) + 1;
@@ -2445,6 +2455,57 @@ const App: React.FC = () => {
             const h = (g4TR >>> 11) & 0x1F;
             const m = (g4TR >> 5) & 0x3F;
             state.utcTime = `${pad(date.day)}/${pad(date.month)}/${date.year} ${pad(h)}:${pad(m)}`;
+            
+            // Time Error Calculation
+            let refNaiveLocalMs: number | null = null;
+            if (rawTimestamp) {
+              const parseMatch = rawTimestamp.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?$/);
+              if (parseMatch) {
+                const ms = parseMatch[7] ? parseInt(parseMatch[7].padEnd(3, '0').slice(0, 3), 10) : 0;
+                // Construct a NAIVE UTC ms representing the literal local time in the file
+                refNaiveLocalMs = Date.UTC(+parseMatch[1], +parseMatch[2] - 1, +parseMatch[3], +parseMatch[4], +parseMatch[5], +parseMatch[6], ms);
+              }
+            } else if (!state.isPlayingRaw) {
+              // Live mode: construct a NAIVE UTC ms representing the PC's actual local time
+              const now = new Date();
+              refNaiveLocalMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
+            }
+
+            if (refNaiveLocalMs !== null) {
+              // Compute CT's Local Time Naive MS
+              const offsetHalfHours = g4 & 0x1F;
+              const isNegative = ((g4 >> 5) & 0x01) === 1;
+              const ctUtcMs = Date.UTC(date.year, date.month - 1, date.day, h, m, 0);
+              
+              let ctNaiveLocalMs = ctUtcMs; // Fallback
+              if (offsetHalfHours <= 24) {
+                 const offsetMs = (isNegative ? -1 : 1) * offsetHalfHours * 30 * 60 * 1000;
+                 ctNaiveLocalMs = ctUtcMs + offsetMs;
+              }
+
+              const totalSecondsDiff = Math.floor(ctNaiveLocalMs / 1000) - Math.floor(refNaiveLocalMs / 1000);
+              
+              if (Math.abs(totalSecondsDiff) <= 1) {
+                state.ctTimeError = "No time error observed.";
+              } else {
+                const sign = totalSecondsDiff < 0 ? "-" : "+";
+                const absSeconds = Math.abs(totalSecondsDiff);
+                const days = Math.floor(absSeconds / (60 * 60 * 24));
+                const hours = Math.floor((absSeconds % (60 * 60 * 24)) / (60 * 60));
+                const minutes = Math.floor((absSeconds % (60 * 60)) / 60);
+                const seconds = absSeconds % 60;
+                
+                let dayStr = "";
+                if (days > 0) {
+                    dayStr = `${sign}${days} day${days > 1 ? 's' : ''} / `;
+                }
+                const timeStr = `${sign}${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+                state.ctTimeError = `${dayStr}${timeStr}`;
+              }
+            } else {
+              state.ctTimeError = null;
+            }
+
             const offsetHalfHours = g4 & 0x1F;
             const isNegative = ((g4 >> 5) & 0x01) === 1;
             if (offsetHalfHours <= 24) {
@@ -2601,6 +2662,7 @@ const App: React.FC = () => {
           localTime: state.localTime, 
           localTimeOffset: state.localTimeOffset,
           utcTime: state.utcTime, 
+          ctTimeError: state.ctTimeError,
           textAbFlag: state.abFlag, 
           rtPlus: (Array.from(state.rtPlusTags.values()) as RtPlusTag[]).filter(t => t.text && t.text.length > 0).sort((a, b) => a.contentType - b.contentType), 
           rtPlusItemRunning: state.rtPlusItemRunning, 
@@ -2804,7 +2866,7 @@ const App: React.FC = () => {
                 time: new Date().toLocaleTimeString('fr-FR')
               });
               if (s.isRawRecording) {
-                s.rawRecordingBuffer.push("---- ---- ---- ----");
+                s.rawRecordingBuffer.push(`---- ---- ---- ---- ${getRawTimestamp()}`);
               }
               decoderState.current.isDirty = true; 
             } else { 
@@ -3024,6 +3086,7 @@ const App: React.FC = () => {
     state.localTime = "";
     state.localTimeOffset = null;
     state.utcTime = "";
+    state.ctTimeError = null;
     state.pty = 0;
     state.ptynAbFlag = false;
     state.tp = false;
@@ -3073,8 +3136,8 @@ const App: React.FC = () => {
     const lines = text.split('\n')
       .map(l => l.trim())
       .map(l => {
-        const match = l.match(/^([0-9A-F-]{4})\s+([0-9A-F-]{4})\s+([0-9A-F-]{4})\s+([0-9A-F-]{4})/i);
-        return match ? [match[1], match[2], match[3], match[4]] : null;
+        const match = l.match(/^([0-9A-F-]{4})\s+([0-9A-F-]{4})\s+([0-9A-F-]{4})\s+([0-9A-F-]{4})(?:\s+@(.*))?/i);
+        return match ? [match[1], match[2], match[3], match[4], match[5]] : null;
       })
       .filter(l => l !== null) as string[][];
     
@@ -3115,15 +3178,16 @@ const App: React.FC = () => {
               time: new Date().toLocaleTimeString('fr-FR')
             });
             if (state.isRawRecording) {
-              state.rawRecordingBuffer.push("---- ---- ---- ----");
+              state.rawRecordingBuffer.push(`---- ---- ---- ---- ${getRawTimestamp()}`);
             }
           } else {
             const g1 = parseInt(parts[0], 16);
             const g2 = parseInt(parts[1], 16);
             const g3 = parseInt(parts[2], 16);
             const g4 = parseInt(parts[3], 16);
+            const ts = parts[4];
             
-            decodeRdsGroup(g1, g2, g3, g4);
+            decodeRdsGroup(g1, g2, g3, g4, ts);
             if (state.currentPi !== "----" && (virtualTime - state.piEstablishmentTime) >= 3000) {
               updateBer(false);
             }
@@ -3191,15 +3255,16 @@ const App: React.FC = () => {
             time: new Date().toLocaleTimeString('fr-FR')
           });
           if (state.isRawRecording) {
-            state.rawRecordingBuffer.push("---- ---- ---- ----");
+            state.rawRecordingBuffer.push(`---- ---- ---- ---- ${getRawTimestamp()}`);
           }
         } else {
           const g1 = parseInt(parts[0], 16);
           const g2 = parseInt(parts[1], 16);
           const g3 = parseInt(parts[2], 16);
           const g4 = parseInt(parts[3], 16);
+          const ts = parts[4];
           
-          decodeRdsGroup(g1, g2, g3, g4);
+          decodeRdsGroup(g1, g2, g3, g4, ts);
           if (state.currentPi !== "----" && (Date.now() - state.piEstablishmentTime) >= 3000) {
             updateBer(false);
           }

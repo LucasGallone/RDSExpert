@@ -1881,6 +1881,7 @@ export const INITIAL_RDS_DATA: RdsData = {
   localTime: "",
   localTimeOffset: null,
   utcTime: "",
+  ctTimeError: null,
   eonData: {},
   tmcServiceInfo: { ltn: 0, sid: 0, afi: false, mode: 0, providerName: "[Identifying...]" },
   tmcMessages: [],

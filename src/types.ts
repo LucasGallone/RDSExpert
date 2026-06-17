@@ -42,6 +42,7 @@ export interface RdsData {
   localTime: string;   // Local Clock Time (Group 4A)
   localTimeOffset: string | null; // Local Time Offset (Group 4A)
   utcTime: string;     // UTC Clock Time (Group 4A)
+  ctTimeError: string | null; // Diff between CT and computer time/raw time
   eonData: Record<string, EonNetwork>; // EON Data keyed by PI
   tmcServiceInfo: TmcServiceInfo; // Service Provider Info (SID, LTN, etc.)
   tmcMessages: TmcMessage[]; // Buffer of decoded TMC messages
