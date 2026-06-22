@@ -2,7 +2,7 @@
 
 ### --- 22/06/2026 ---
 - Added a green circle indicator to the Group Monitor, in the RDS group selection list. This makes it easier to see which groups are actually being transmitted, and therefore select them for monitoring.
-- Added the ability to sort data in ascending and descending order in the PS/PTY/PTYN history and in the Radiotext history. Users can now view the most recent data at the bottom of the list by clicking the new arrow icon.
+- Added the ability to sort data in ascending and descending order in the PS/PTY/PTYN history and in the Radiotext history. Users can now view the most recent data at the bottom of the list by clicking the new arrow icon in the "Time" column.
 - Fixed a bug that caused an incorrect TMC provider name to be displayed in the ODA details in the Group Monitor. When the previously decoded RDS included the TMC service, the provider name was saved as a cache and re-displayed on the next RDS until the correct value was decoded.
 
 ### --- 17/06/2026 ---
