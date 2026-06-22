@@ -1,5 +1,5 @@
 
-import React, { useState, useEffect, useMemo, useRef } from 'react';
+import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { RdsData, PTY_RDS, PTY_RBDS, PTY_COMBINED, PsHistoryItem, RtHistoryItem, BandscanEntry } from '../types';
 import { ECC_COUNTRY_MAP, LIC_LANGUAGE_MAP } from '../constants';
 import { jsPDF } from 'jspdf';
@@ -74,9 +74,9 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
   const ptyList = PTY_COMBINED;
 
   // Custom frequency formatting per user rules:
-  // de .x00 à .x40 : .x
-  // si x50 : .x5 (exemple 88.450 = 88.45)
-  // si entre x60 et x90, convertir avec la fréquence supérieure à .0 (exemple 88.470 = 88.5)
+  // from .x00 to .x40 : .x
+  // if x50: .x5 (e.g. 88.450 = 88.45)
+  // if between x60 and x90, convert to the greater frequency with .0 (e.g. 88.470 = 88.500 -> 88.5)
   const formatFrequency = (fStr: string) => {
     const f = parseFloat(fStr);
     const mhzBase = Math.floor(f * 10) / 10;
@@ -267,7 +267,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     }
     content += `\n`;
 
-    // 8. GROUP COUNTER
+    // 8. Group Counter
     content += `[8] GROUP COUNTER\n`;
     content += `------------------\n`;
     const errorCount = data.groupCounts["--"] || 0;
@@ -293,7 +293,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     }
     content += `\n`;
 
-    // 9. GROUP SEQUENCE
+    // 9. Group Sequence
     content += `[9] GROUP SEQUENCE (LAST 100 GROUPS DECODED)\n`;
     content += `-------------------------------------------\n`;
     if (data.groupSequence && data.groupSequence.length > 0) {
@@ -314,7 +314,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     });
     content += `\n`;
 
-    // 11. PS / PTY / PTYN HISTORY
+    // 11. PS / PTY / PTYN History
     content += `[11] PS / PTY / PTYN HISTORY\n`;
     content += `----------------------------\n`;
     
@@ -330,7 +330,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     }
     content += `\n`;
 
-    // • PTY History •
+    // PTY History
     content += `• PTY History •\n`;
     if (psHistory.length > 0) {
         let lastPtyValue = "";
@@ -385,7 +385,6 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
         const sig = entry.signal.toFixed(1);
         const st = entry.stationName || "Unknown";
         const city = (entry.city || "[Unknown]").split(' | ')[0];
-        // Updated formatting: [Fréquence] MHz -> PI: [PI] | PS: [PS] | [dBf] -> [Station] - [Ville]
         content += `${f} MHz -> PI: ${pi} | PS: ${ps} | ${sig} dBf -> ${st} - ${city}\n`;
     });
     content += `\n`;
@@ -469,8 +468,8 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     }
   };
 
-  // Ce hook garantit que le rapport de bandscan s'affiche uniquement après que l'état local "waitingForFinalReport"
-  // soit actif ET que React ait fini de mettre à jour "data.isRecording" (ce qui confirme que la dernière station a été capturée).
+  // This hook ensures that the bandscan report is displayed only after the local state "waitingForFinalReport"
+  // is active AND React has finished updating "data.isRecording" (which confirms that the last station has been captured).
   useEffect(() => {
     const fetchFinalData = async () => {
         if (!serverUrl) return '';
@@ -573,9 +572,16 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
 
                     return `--- PS History ---\n${psLines}\n\n--- PTY History ---\n${ptyLines.trim()}\n\n--- PTYN History ---\n${ptynLines.trim() || "N/A"}`;
                 }}
-                renderHeader={() => (
-                    <tr className="border-b border-slate-700 text-slate-500 bg-slate-900 sticky top-0 z-10 text-[10px] uppercase">
-                        <th className="p-3 w-24">Time</th>
+                renderHeader={(sortState) => (
+                    <tr className="border-b border-slate-700 text-slate-500 bg-slate-900 sticky top-0 z-10">
+                        <th className="p-3 w-24">
+                            <div className="flex items-center gap-1 cursor-pointer hover:text-white select-none transition-colors" onClick={sortState?.onToggleSort}>
+                                Time
+                                {sortState && (
+                                    <svg className={`w-3 h-3 transition-transform ${sortState.sortOrder === 'asc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                                )}
+                            </div>
+                        </th>
                         <th className="p-3 w-32">PS</th>
                         <th className="p-3 w-72">PTY</th>
                         <th className="p-3">PTYN</th>
@@ -599,6 +605,8 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
                 copyReverse={true}
                 allowUnderscoreToggle={true}
                 storageKey="rds_history_ps_underscores"
+                enableTimeSort={true}
+                sortStorageKey="rds_history_ps_sort"
             />
         )}
 
@@ -615,9 +623,16 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
                     }).join('');
                     return `[${item.time}] ${formattedText}`;
                 }}
-                renderHeader={() => (
+                renderHeader={(sortState) => (
                     <tr className="border-b border-slate-700 text-slate-500 bg-slate-900 sticky top-0 z-10">
-                        <th className="p-3 w-24">Time</th>
+                        <th className="p-3 w-24">
+                            <div className="flex items-center gap-1 cursor-pointer hover:text-white select-none transition-colors" onClick={sortState?.onToggleSort}>
+                                Time
+                                {sortState && (
+                                    <svg className={`w-3 h-3 transition-transform ${sortState.sortOrder === 'asc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
+                                )}
+                            </div>
+                        </th>
                         <th className="p-3">Radiotext</th>
                     </tr>
                 )}
@@ -642,6 +657,8 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
                 )}
                 emptyMessage="No complete Radiotext messages recorded for now."
                 copyReverse={true}
+                enableTimeSort={true}
+                sortStorageKey="rds_history_rt_sort"
             />
         )}
 
@@ -693,7 +710,7 @@ export interface HistoryViewerProps<T> {
     title: string;
     data: T[];
     onClose: () => void;
-    renderHeader: () => React.ReactNode;
+    renderHeader: (sortState?: { sortOrder: 'desc' | 'asc', onToggleSort: () => void }) => React.ReactNode;
     renderRow: (item: T, index: number, useUnderscores: boolean) => React.ReactNode;
     getCopyText: (item: T, useUnderscores: boolean) => string;
     fullCopyFormatter?: (items: T[], useUnderscores: boolean) => string;
@@ -701,12 +718,16 @@ export interface HistoryViewerProps<T> {
     copyReverse?: boolean;
     allowUnderscoreToggle?: boolean;
     storageKey?: string;
+    enableTimeSort?: boolean;
+    sortStorageKey?: string;
 }
 
-export const HistoryViewer = <T extends any>({ title, data, onClose, renderHeader, renderRow, getCopyText, fullCopyFormatter, emptyMessage, copyReverse, allowUnderscoreToggle, storageKey }: HistoryViewerProps<T>) => {
+export const HistoryViewer = <T extends any>({ title, data, onClose, renderHeader, renderRow, getCopyText, fullCopyFormatter, emptyMessage, copyReverse, allowUnderscoreToggle, storageKey, enableTimeSort, sortStorageKey }: HistoryViewerProps<T>) => {
     const [paused, setPaused] = useState(false);
     const [frozenData, setFrozenData] = useState<T[]>([]);
     const [copyStatus, setCopyStatus] = useState<'IDLE' | 'COPIED'>('IDLE');
+    const scrollContainerRef = useRef<HTMLDivElement>(null);
+    const isUserAtBottomRef = useRef(true);
     const [useUnderscores, setUseUnderscores] = useState(() => {
         if (storageKey) {
             const saved = localStorage.getItem(storageKey);
@@ -715,13 +736,64 @@ export const HistoryViewer = <T extends any>({ title, data, onClose, renderHeade
         return true;
     });
 
+    const [sortOrder, setSortOrder] = useState<'desc' | 'asc'>(() => {
+        if (sortStorageKey) {
+            const saved = localStorage.getItem(sortStorageKey);
+            return (saved === 'asc' || saved === 'desc') ? saved : 'desc';
+        }
+        return 'desc';
+    });
+
     useEffect(() => {
         if (storageKey) {
             localStorage.setItem(storageKey, useUnderscores.toString());
         }
     }, [useUnderscores, storageKey]);
 
-    const displayData = paused ? frozenData : data;
+    useEffect(() => {
+        if (sortStorageKey) {
+            localStorage.setItem(sortStorageKey, sortOrder);
+        }
+    }, [sortOrder, sortStorageKey]);
+
+    const handleScroll = useCallback(() => {
+        const container = scrollContainerRef.current;
+        if (container) {
+            // Check if we are really at the bottom (allow 5px margin of error)
+            const atBottom = Math.ceil(container.scrollTop + container.clientHeight) >= container.scrollHeight - 5;
+            isUserAtBottomRef.current = atBottom;
+        }
+    }, []);
+
+    useEffect(() => {
+        const container = scrollContainerRef.current;
+        if (container) {
+            container.addEventListener('scroll', handleScroll);
+            return () => container.removeEventListener('scroll', handleScroll);
+        }
+    }, [handleScroll]);
+
+    const displayDataRaw = paused ? frozenData : data;
+    
+    const displayData = useMemo(() => {
+        if (sortOrder === 'desc') return displayDataRaw;
+        return [...displayDataRaw].reverse();
+    }, [displayDataRaw, sortOrder]);
+
+    useEffect(() => {
+        const container = scrollContainerRef.current;
+        if (container && sortOrder === 'asc' && isUserAtBottomRef.current) {
+            // Need a slight timeout to allow React to paint the new items
+            setTimeout(() => {
+                if (scrollContainerRef.current) {
+                    scrollContainerRef.current.scrollTo({
+                        top: scrollContainerRef.current.scrollHeight,
+                        behavior: 'smooth'
+                    });
+                }
+            }, 0);
+        }
+    }, [displayData, sortOrder]);
 
     const togglePause = () => {
         if (!paused) {
@@ -732,7 +804,10 @@ export const HistoryViewer = <T extends any>({ title, data, onClose, renderHeade
 
     const handleCopy = () => {
         let itemsToCopy = [...displayData];
-        if (copyReverse) {
+        if (copyReverse && !enableTimeSort) {
+            itemsToCopy.reverse();
+        } else if (enableTimeSort && sortOrder === 'desc' && copyReverse) {
+            // Still reverse by default (desc->asc) if time sort is enabled but unchanged from default
             itemsToCopy.reverse();
         }
 
@@ -809,10 +884,10 @@ export const HistoryViewer = <T extends any>({ title, data, onClose, renderHeade
     );
 
     return (
-        <HistoryViewerWrapper title={title} onClose={onClose} actions={actions}>
+        <HistoryViewerWrapper title={title} onClose={onClose} actions={actions} scrollContainerRef={scrollContainerRef}>
             <table className="w-full text-left text-sm font-mono">
                 <thead>
-                    {renderHeader()}
+                    {renderHeader(enableTimeSort ? { sortOrder, onToggleSort: () => setSortOrder(prev => prev === 'desc' ? 'asc' : 'desc') } : undefined)}
                 </thead>
                 <tbody>
                     {displayData.map((item, i) => renderRow(item, i, useUnderscores))}
@@ -825,7 +900,7 @@ export const HistoryViewer = <T extends any>({ title, data, onClose, renderHeade
     );
 };
 
-export const HistoryViewerWrapper: React.FC<{ title: string, onClose: () => void, children: React.ReactNode, actions?: React.ReactNode }> = ({ title, onClose, children, actions }) => {
+export const HistoryViewerWrapper: React.FC<{ title: string, onClose: () => void, children: React.ReactNode, actions?: React.ReactNode, scrollContainerRef?: React.RefObject<HTMLDivElement> }> = ({ title, onClose, children, actions, scrollContainerRef }) => {
     return (
         <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
             <div className="bg-slate-950 border border-slate-700 rounded-lg shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
@@ -841,7 +916,7 @@ export const HistoryViewerWrapper: React.FC<{ title: string, onClose: () => void
                         <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
                     </button>
                 </div>
-                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950">
+                <div ref={scrollContainerRef} className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950">
                     {children}
                 </div>
                 <div className="p-3 bg-slate-900 border-t border-slate-800 flex justify-end">
@@ -924,7 +999,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             ? `RDSExpert Bandscan - ${dateStr} - ${timeStr}.txt`
             : `RDSExpert Data Export - ${piSafe} - ${dateStr} - ${timeStr}.txt`;
 
-        // Correction de la regex pour préserver les sauts de ligne (\n, code 0x0A) lors de l'export TXT
+        // Regex correction to preserve line breaks (\n, code 0x0A) during TXT export
         const blob = new Blob([displayContent.replace(/[\x00-\x09\x0B-\x1F]/g, '')], { type: 'text/plain' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -1042,20 +1117,20 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         const stationStartPages: number[] = [];
 
         if (isBandscan) {
-            doc.setFillColor(15, 23, 42); // Ardoise 900
+            doc.setFillColor(15, 23, 42); // Slate 900
             doc.rect(0, 0, 210, 40, 'F');
             doc.setTextColor(255, 255, 255);
             doc.setFont("helvetica", "bold");
             doc.setFontSize(24);
             doc.text("RDS", 15, 25);
-            doc.setTextColor(59, 130, 246); // Bleu 500
+            doc.setTextColor(59, 130, 246); // Blue 500
             doc.text("Expert", 33, 25);
             doc.setFontSize(10);
-            doc.setTextColor(148, 163, 184); // Ardoise 400
+            doc.setTextColor(148, 163, 184); // Slate 400
             doc.setFont("helvetica", "normal");
             doc.text("DETAILED BANDSCAN REPORT", 15, 33);
             
-            // Inclusion nom du serveur et date à droite
+            // Server name and date included on the right
             const rightMargin = 195;
             doc.setFontSize(10);
             const genText = `Generated on: ${now}`;
@@ -1064,7 +1139,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             
             if (serverName) {
                 doc.setFontSize(10);
-                // Aggressive removal of non-standard characters and emojis
+                // Removal of non-standard characters and emojis
                 const sanitizedServerName = serverName.replace(/[^\x20-\x7E\xA0-\xFF]/g, '');
                 const srvText = `Server: ${sanitizedServerName}`;
                 const srvWidth = doc.getTextWidth(srvText);
@@ -1072,15 +1147,15 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             }
 
             // Table Header Title
-            doc.setTextColor(15, 23, 42); // Ardoise 900
+            doc.setTextColor(15, 23, 42); // Slate 900
             doc.setFontSize(14);
             doc.setFont("helvetica", "bold");
             doc.text("Bandscan Summary", 15, 55);
-            doc.setDrawColor(37, 99, 235); // Bleu 600
+            doc.setDrawColor(37, 99, 235); // Blue 600
             doc.setLineWidth(0.5);
             doc.line(15, 58, 65, 58);
 
-            // Column Titles - EXACT TEXTS AS REQUESTED
+            // Column Titles
             doc.setFontSize(8);
             doc.setTextColor(100, 116, 139); // Slate 500
             doc.text("FREQ.", 15, 68);
@@ -1109,7 +1184,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 if (yPos + rowHeight > 285) {
                     doc.addPage();
                     yPos = 20;
-                    // Redraw sub-header (Bold + Ligne grise)
+                    // Redraw sub-header (Bold + Grey line)
                     doc.setFontSize(8);
                     doc.setTextColor(100, 116, 139);
                     doc.setFont("helvetica", "bold");
@@ -1140,10 +1215,10 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 doc.setTextColor(37, 99, 235); // Blue 600
                 doc.text(`${freqStr}`, 15, yPos);
 
-                // Ajout indicateurs TP et TA sous la fréquence
+                // Adding TP and TA indicators under the frequency
                 let badgeX = 15;
                 if (entry.tp) {
-                    doc.setFillColor(21, 128, 61); // Vert foncé
+                    doc.setFillColor(21, 128, 61); // Dark green
                     // @ts-ignore
                     doc.roundedRect(badgeX, yPos + 1.5, 6.5, 2.5, 0.3, 0.3, 'F');
                     doc.setTextColor(255, 255, 255);
@@ -1154,7 +1229,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                     badgeX += 7.5;
                 }
                 if (entry.ta) {
-                    doc.setFillColor(153, 27, 27); // Rouge foncé
+                    doc.setFillColor(153, 27, 27); // Dark red
                     // @ts-ignore
                     doc.roundedRect(badgeX, yPos + 1.5, 6.5, 2.5, 0.3, 0.3, 'F');
                     doc.setTextColor(255, 255, 255);
@@ -1174,7 +1249,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 doc.setFont("helvetica", "bold");
                 doc.setFontSize(10); 
                 if (entry.isDynamic) {
-                    doc.setTextColor(126, 34, 206); // Violet (Purple 700)
+                    doc.setTextColor(126, 34, 206); // Purple 700
                 } else if (entry.ps === "--------") {
                     doc.setTextColor(148, 163, 184); // Slate 400
                 } else {
@@ -1270,13 +1345,13 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             });
         }
         
-        // --- PAGES DE DÉTAILS ---
+        // --- DETAILS PAGES ---
         bandscanEntries.forEach((entry, idx) => {
             if (isBandscan || idx > 0) doc.addPage();
             stationStartPages[idx] = doc.getNumberOfPages();
             
-            // En-tête de station modernisé
-            doc.setFillColor(241, 245, 249); // Ardoise 100
+            // Station header
+            doc.setFillColor(241, 245, 249); // Slate 100
             doc.rect(0, 0, 210, 42, 'F');
             
             const freqStr = formatFreq(entry.freq);
@@ -1291,10 +1366,10 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             doc.setTextColor(100, 116, 139);
             doc.text(`Modulation: ${entry.modulation || "Mono"}`, 15, 26);
             
-            // Case TP verte et TA rouge foncée
+            // Green TP and dark red TA indicators
             let detBadgeX = 15;
             if (entry.tp) {
-                doc.setFillColor(21, 128, 61); // Vert foncé
+                doc.setFillColor(21, 128, 61); // Dark green
                 doc.rect(detBadgeX, 28, 7, 4, 'F');
                 doc.setTextColor(255, 255, 255);
                 doc.setFontSize(7);
@@ -1304,7 +1379,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 detBadgeX += 8.5;
             }
             if (entry.ta) {
-                doc.setFillColor(153, 27, 27); // Rouge foncé
+                doc.setFillColor(153, 27, 27); // Dark red
                 doc.rect(detBadgeX, 28, 7, 4, 'F');
                 doc.setTextColor(255, 255, 255);
                 doc.setFontSize(7);
@@ -1328,21 +1403,21 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 doc.text(metaStr, 60, 31);
             }
             
-            // Indicateur de signal visuel
+            // Visual signal indicator (dBf/dBuV)
             const sig = entry.signal;
             const displaySigValDetail = signalUnit === 'dBuV' ? (sig - 11.2).toFixed(1) : sig.toFixed(1);
             const displayUnitDetail = signalUnit === 'dBuV' ? 'dBuV' : 'dBf';
             
-            doc.setFillColor(226, 232, 240); // Ardoise 200
+            doc.setFillColor(226, 232, 240); // Slate 200
             doc.rect(140, 25, 50, 4, 'F');
             
             // Strictly correct color logic:
             if (sig <= 25.0) {
-                doc.setFillColor(239, 68, 68); // Rouge 500
+                doc.setFillColor(239, 68, 68); // Red 500
             } else if (sig <= 50.0) {
-                doc.setFillColor(217, 119, 6); // Jaune foncé (Amber 600)
+                doc.setFillColor(217, 119, 6); // Dark yellow (Amber 600)
             } else {
-                doc.setFillColor(34, 197, 94); // Vert 500
+                doc.setFillColor(34, 197, 94); // Green 500
             }
             
             const visualWidth = Math.min(50, Math.max(0, (sig / 100) * 50)); 
@@ -1399,11 +1474,11 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             const stationGenTime = stationGenTimeMatch ? stationGenTimeMatch[1] : now;
             
             doc.setFontSize(10);
-            doc.setTextColor(71, 85, 105); // Ardoise 600
+            doc.setTextColor(71, 85, 105); // Slate 600
             doc.setFont("helvetica", "bold");
             doc.text(`Generated on: ${stationGenTime}`, 15, 48.5);
             
-            doc.setDrawColor(203, 213, 225); // Ardoise 300
+            doc.setDrawColor(203, 213, 225); // Slate 300
             doc.setLineWidth(0.3);
             doc.line(15, 52, 195, 52);
             
@@ -1681,7 +1756,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             });
         });
 
-        // --- DEUXIÈME PASSE : CRÉATION DES LIENS DU RÉSUMÉ ---
+        // --- CREATING SUMMARY LINKS ---
         if (isBandscan) {
             let currentSummaryPage = 1;
             doc.setPage(1);
@@ -1705,7 +1780,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             });
         }
 
-        // --- TROISIÈME PASSE : LIENS DE NAVIGATION ENTRE STATIONS ---
+        // --- NAVIGATION LINKS BETWEEN STATIONS ---
         if (isBandscan) {
             bandscanEntries.forEach((_, index) => {
                 doc.setPage(stationStartPages[index]);

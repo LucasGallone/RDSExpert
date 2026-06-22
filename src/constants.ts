@@ -73,7 +73,7 @@ export const ODA_MAP: Record<string, string> = {
     "4BD8": "Radiotext+ for eRT"
 };
 
-// FACTORY PI MAP
+// Factory PI codes map
 export const FACTORY_PI_MAP: Record<string, string> = {
   "0000": "Factory code: Widely used by various manufacturers",
   "0101": "Factory code: Unknown manufacturer(s)",

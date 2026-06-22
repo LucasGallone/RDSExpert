@@ -98,7 +98,7 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
       // Sort remaining frequencies if sortAf is true
       const sortedRemaining = sortAf ? sortFreqs(remainingFreqs) : remainingFreqs;
 
-      // Ensure the head frequency always appears first (en tête de liste)
+      // Ensure the head frequency always appears first
       const displayAf = head && counts[head] ? [head, ...sortedRemaining] : sortedRemaining;
       
       displayContent = displayAf.length > 0 ? (
@@ -156,7 +156,7 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
       <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
         <div className="flex flex-row justify-between items-center mb-4 gap-2 md:gap-4">
             <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2 min-w-0">
-              {/* Radio Tower / Antenna Icon - Replaced by FontAwesome as requested */}
+              {/* Radio Tower / Antenna Icon */}
               <i className="fa-solid fa-tower-broadcast text-base shrink-0"></i>
               <span className="truncate">Alternative Frequencies (AF)</span>
               {data.afType !== 'Unknown' && (

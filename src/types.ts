@@ -1,48 +1,48 @@
 export interface RdsData {
-  pi: string;          // Program Identification (e.g., F204)
-  ps: string;          // Program Service (e.g., F I P)
-  longPs: string;      // Long Program Service (Max 32 chars, via Group 15A/15B)
+  pi: string;          // PI - Program Identification (e.g., F204)
+  ps: string;          // PS - Program Service (e.g., F I P)
+  longPs: string;      // Long PS - Long Program Service (Max 32 chars, via Group 15A/15B)
   rtA: string;         // Radio Text A (Text A/B Flag = 0)
   rtB: string;         // Radio Text B (Text A/B Flag = 1)
   textAbFlag: boolean; // Current active flag (false=A, true=B)
   rtPlus: RtPlusTag[]; // RadioText+ Tags
   rtPlusItemRunning: boolean; // RT+ Item Running Bit (Group 12A Block 2 Bit 4)
   rtPlusItemToggle: boolean;  // RT+ Item Toggle Bit (Group 12A Block 2 Bit 3)
-  hasOda: boolean;     // Flag d'activité ODA (Latched)
+  hasOda: boolean;     // ODA activity flag (Latched)
   odaApp?: { name: string; aid: string; group: string; extra?: string }; // Last detected ODA details (Legacy)
   odaList: { name: string; aid: string; group: string; extra?: string }[]; // List of up to 5 detected ODAs
-  hasRtPlus: boolean;  // Flag d'activité RT+ (Latched)
-  hasEon: boolean;     // Flag d'activité EON (Latched)
-  hasTmc: boolean;     // Flag d'activité TMC (Latched)
-  hasTdc: boolean;     // Flag d'activité TDC (Latched)
-  hasIh: boolean;      // Flag d'activité IH (Latched)
-  hasRp: boolean;      // Flag d'activité RP (Latched)
-  hasErt: boolean;     // Flag d'activité eRT (Latched)
-  hasEws: boolean;     // Flag d'activité EWS (Latched)
-  ewsId: string;       // EWS ID (Group 1A)
-  pty: number;         // Program Type (0-31)
-  ptyName?: string;    // Decoded PTY Name (Optional, derived in components usually)
-  ptyn: string;        // Program Type Name (8 chars, via Group 10A)
+  hasRtPlus: boolean;  // RT+ activity flag (Latched)
+  hasEon: boolean;     // EON activity flag (Latched)
+  hasTmc: boolean;     // TMC activity flag (Latched)
+  hasTdc: boolean;     // TDC activity flag (Latched)
+  hasIh: boolean;      // IH activity flag (Latched)
+  hasRp: boolean;      // RP activity flag (Latched)
+  hasErt: boolean;     // eRT activity flag (Latched)
+  hasEws: boolean;     // EWS activity flag (Latched)
+  ewsId: string;       // EWS ID (decoded from Group 1A)
+  pty: number;         // PTY - Program Type (0-31)
+  ptyName?: string;    // Decoded PTYN - Program Type Name
+  ptyn: string;        // PTYN - Program Type Name (8 chars, via Group 10A)
   ptynAbFlag: boolean; // PTYN A/B Flag (Group 10A Block 2 Bit 4)
-  af: string[];        // Alternative Frequencies (Method A flat list)
+  af: string[];        // AF - Alternative Frequencies (Method A flat list)
   afListHead: string | null; // Head of AF List (Method A)
   afHeaderCount: number | null; // Number of AFs advertised in header
   afBLists: Record<string, string[]>; // Method B Grouping (Key=Tx Freq, Value=AF List)
   afType: 'A' | 'B' | 'Unknown'; // AF Method detection
-  tp: boolean;         // Traffic Program
-  ta: boolean;         // Traffic Announcement
-  ms: boolean;         // Music/Speech flag
-  stereo: boolean;     // Stereo flag (DI Bit via Group 0A)
-  artificialHead: boolean; // Artificial Head (DI Bit via Group 0A)
-  compressed: boolean;     // Compressed (DI Bit via Group 0A)
-  dynamicPty: boolean;     // Dynamic PTY (DI Bit via Group 0A)
-  ecc: string;         // Extended Country Code (Group 1A)
-  lic: string;         // Language Identification Code (Group 1A)
-  pin: string;         // Program Item Number (Day HH:MM, via Group 1A)
+  tp: boolean;         // TP - Traffic Program
+  ta: boolean;         // TA - Traffic Announcement
+  ms: boolean;         // M/S - Music/Speech flag
+  stereo: boolean;     // DI - Stereo flag (DI Bit via Group 0A)
+  artificialHead: boolean; // DI - Artificial Head (DI Bit via Group 0A)
+  compressed: boolean;     // DI - Compressed (DI Bit via Group 0A)
+  dynamicPty: boolean;     // DI - Dynamic PTY (DI Bit via Group 0A)
+  ecc: string;         // ECC - Extended Country Code (Group 1A)
+  lic: string;         // LIC - Language Identification Code (Group 1A)
+  pin: string;         // PIN - Program Item Number (Day HH:MM, via Group 1A)
   localTime: string;   // Local Clock Time (Group 4A)
   localTimeOffset: string | null; // Local Time Offset (Group 4A)
   utcTime: string;     // UTC Clock Time (Group 4A)
-  ctTimeError: string | null; // Diff between CT and computer time/raw time
+  ctTimeError: string | null; // Difference between CT and computer time
   eonData: Record<string, EonNetwork>; // EON Data keyed by PI
   tmcServiceInfo: TmcServiceInfo; // Service Provider Info (SID, LTN, etc.)
   tmcMessages: TmcMessage[]; // Buffer of decoded TMC messages

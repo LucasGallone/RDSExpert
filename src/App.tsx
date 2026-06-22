@@ -606,7 +606,7 @@ const App: React.FC = () => {
   const lastApiDataRef = useRef<any>(null);
   const apiTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Decoder State Ref
+  // Decoder State Reference
   const decoderState = useRef<DecoderState>({
     psBuffer: new Array(8).fill('-'),  
     psMask: new Array(8).fill(false),
@@ -768,7 +768,7 @@ const App: React.FC = () => {
     const psHistoryValues = state.psHistoryBuffer.slice(0, 14).reverse().map(h => h.ps.replace(/ /g, '_'));
     const psFormatted = psHistoryValues.length > 0 ? psHistoryValues.join(' / ') : renderRdsBuffer(state.psBuffer, false, false, true).replace(/ /g, '_');
     
-    // Frequency formatting helper (consistent with HistoryControls)
+    // Frequency formatting helper
     const fmtFreq = (fStr: string) => {
         const f = parseFloat(fStr);
         const mhzBase = Math.floor(f * 10) / 10;
@@ -789,7 +789,7 @@ const App: React.FC = () => {
     const mod = lastApiDataRef.current?.st ? "Stereo" : "Mono";
     const sigVal = lastApiDataRef.current?.sig || 0;
 
-    // Numerical sort helper for AF list, respecting head if present
+    // Numerical sort helper for AF list, respecting head of list if present
     const getSortedAfList = (head: string | null, list: string[]) => {
       const unique = Array.from(new Set(list));
       const headFloat = head ? parseFloat(head) : NaN;
@@ -797,7 +797,7 @@ const App: React.FC = () => {
       return head ? [head, ...others] : unique.sort((a,b) => parseFloat(a) - parseFloat(b));
     };
 
-    // Numerical sort helper for Method A AF list, respecting head and showing repetition counts
+    // Numerical sort helper for Method A AF list, respecting head of list and showing repetition counts
     const getSortedAfListWithCounts = (head: string | null, list: string[]) => {
       const counts: Record<string, number> = {};
       for (const freq of list) {
@@ -823,7 +823,6 @@ const App: React.FC = () => {
       }
     };
 
-    // This report structure matches generateReportContent in HistoryControls.tsx exactly
     let content = `RDSExpert - Text Report\n`;
     content += `Generated on: ${nowTimestamp}\n`;
     content += `---------------------------------------\n`;
@@ -854,7 +853,6 @@ const App: React.FC = () => {
     content += `[2] FLAGS / DECODER IDENTIFICATION (DI) / CLOCK TIME (CT) / PIN\n`;
     content += `---------------------------------------------------------------\n`;
     content += `Flags:        TP = ${state.tp ? '1' : '0'} | TA = ${state.ta ? '1' : '0'} | MS = ${state.ms ? 'Music' : 'Speech'}\n`;
-    // Fix: use diStereo instead of stereo in DecoderState
     content += `DI:           Stereo = ${state.diStereo ? '1' : '0'} | Artificial Head = ${state.diArtificialHead ? '1' : '0'} | Compressed = ${state.diCompressed ? '1' : '0'} | Dynamic PTY = ${state.diDynamicPty ? '1' : '0'}\n`;
     content += `Local Time:   ${state.localTime || "N/A"}\n`;
     content += `UTC Time:     ${state.utcTime || "N/A"}\n`;
@@ -938,7 +936,7 @@ const App: React.FC = () => {
     }
     content += `\n`;
 
-    // 8. GROUPS COUNTER
+    // 8. Group Counter
     const G_DESC: Record<string, string> = {
       "0A": "PI, PS, AF, PTY, Flags", "0B": "PI, PS, PTY, Flags", "1A": "ECC, LIC, PIN, EWS ID", "1B": "PIN",
       "2A": "Radiotext", "2B": "Radiotext", "3A": "ODA AIDs List", "3B": "ODA",
@@ -975,7 +973,7 @@ const App: React.FC = () => {
     }
     content += `\n`;
 
-    // 9. GROUP SEQUENCE
+    // 9. Group Sequence
     content += `[9] GROUP SEQUENCE (LAST 100 GROUPS DECODED)\n`;
     content += `-------------------------------------------\n`;
     if (state.groupSequence && state.groupSequence.length > 0) {
@@ -1084,7 +1082,6 @@ const App: React.FC = () => {
 
     state.bandscanEntries.push(entry);
     state.isDirty = true;
-    // Note: Do not clear lastApiDataRef here to allow final report generator access if needed
   };
 
   const fetchBandscanMetadata = async (retryCount = 0) => {
@@ -1114,7 +1111,7 @@ const App: React.FC = () => {
             st: json.st
         };
 
-        // --- Logic retry if TX is empty (Max 9 retries every 5 seconds) ---
+        // --- Logic retry if TX data is not present on the webserver API (Max 9 retries every 5 seconds) ---
         if (decoderState.current.isRecording && !txValue && retryCount < 9) {
             if (apiTimeoutRef.current) clearTimeout(apiTimeoutRef.current);
             apiTimeoutRef.current = setTimeout(() => fetchBandscanMetadata(retryCount + 1), 5000);
@@ -1683,7 +1680,7 @@ const App: React.FC = () => {
           if (state.currentMethodBGroup && state.afBMap.has(state.currentMethodBGroup)) {
             const entry = state.afBMap.get(state.currentMethodBGroup)!;
             
-            // Process af1 for Method B
+            // Process AF1 for Method B
             let processedAf1 = false;
             if (isAfFreq(af1)) {
               const f1 = decodeAf(af1);
@@ -1693,7 +1690,7 @@ const App: React.FC = () => {
               }
             }
 
-            // Process af2 for Method B
+            // Process AF2 for Method B
             let processedAf2 = false;
             if (isAfFreq(af2)) {
               const f2 = decodeAf(af2);
@@ -2290,7 +2287,7 @@ const App: React.FC = () => {
         if (fullMsg.length > 0) {
           const last = state.ertHistoryBuffer[0];
           if (!last || last.text !== fullMsg) {
-            // Re-resolve tags from the final message to ensure completeness (e.g. Alok instead of Alo)
+            // Re-resolve tags from the final message to ensure completeness
             const resolvedTags = Array.from(state.ertPlusTags.values()).map((tag: any) => {
               const length = tag.length + 1;
               let text = "";
@@ -2467,17 +2464,14 @@ const App: React.FC = () => {
               const parseMatch = rawTimestamp.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?$/);
               if (parseMatch) {
                 const ms = parseMatch[7] ? parseInt(parseMatch[7].padEnd(3, '0').slice(0, 3), 10) : 0;
-                // Construct a NAIVE UTC ms representing the literal local time in the file
                 refNaiveLocalMs = Date.UTC(+parseMatch[1], +parseMatch[2] - 1, +parseMatch[3], +parseMatch[4], +parseMatch[5], +parseMatch[6], ms);
               }
             } else if (!state.isPlayingRaw) {
-              // Live mode: construct a NAIVE UTC ms representing the PC's actual local time
               const now = new Date();
               refNaiveLocalMs = Date.UTC(now.getFullYear(), now.getMonth(), now.getDate(), now.getHours(), now.getMinutes(), now.getSeconds(), now.getMilliseconds());
             }
 
             if (refNaiveLocalMs !== null) {
-              // Compute CT's Local Time Naive MS
               const offsetHalfHours = g4 & 0x1F;
               const isNegative = ((g4 >> 5) & 0x01) === 1;
               const ctUtcMs = Date.UTC(date.year, date.month - 1, date.day, h, m, 0);
@@ -2531,7 +2525,7 @@ const App: React.FC = () => {
       const newFlag = !!((g2 >> 4) & 0x01);
       if (state.ptynAbFlag !== newFlag) {
         state.ptynAbFlag = newFlag;
-        state.ptynBuffer.fill(' '); // Force reset of PTYN value specifically when flag changes
+        state.ptynBuffer.fill(' '); // Force reset of the PTYN value specifically when flag (A/B) changes
       }
       const address = g2 & 0x01; 
       if (!isNaN(g3)) {
@@ -2946,7 +2940,7 @@ const App: React.FC = () => {
   };
 
   const setRecording = (val: boolean) => {
-    // Si on arrête l'enregistrement, on archive d'abord la station en cours pour ne pas l'oublier
+    // If we stop the recording, we trigger a capture of the currently tuned station so we don't miss it
     if (!val && decoderState.current.isRecording) {
         captureBandscanEntry(); 
     }
@@ -2954,7 +2948,7 @@ const App: React.FC = () => {
     decoderState.current.isRecording = val;
     
     if (val) {
-        // Start recording: Clear existing and attempt immediate fetch for current freq
+        // Start recording: Clear existing and attempt immediate fetch for current frequency
         decoderState.current.bandscanEntries = [];
         decoderState.current.frequencyStartTime = Date.now();
         if (apiTimeoutRef.current) clearTimeout(apiTimeoutRef.current);

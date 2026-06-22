@@ -34,31 +34,31 @@ const GROUP_COLORS: Record<string, string> = {
     // 4: Clock (Pink)
     "4A": "text-pink-500",
     "4B": "text-pink-500",
-    // 5: TDC (Violet)
+    // 5: TDC (Purple)
     "5A": "text-violet-400",
     "5B": "text-violet-400",
-    // 6: IH (Violet)
+    // 6: IH (Purple)
     "6A": "text-violet-400",
     "6B": "text-violet-400",
-    // 7: RP (Violet)
+    // 7: RP (Purple)
     "7A": "text-violet-400",
     "7B": "text-violet-400",
     // 8: TMC (Red)
     "8A": "text-red-500",
     "8B": "text-red-500",
-    // 9: EWS (Violet)
+    // 9: EWS (Purple)
     "9A": "text-violet-400",
     "9B": "text-violet-400",
     // 10: PTYN (Orange)
     "10A": "text-orange-400",
     "10B": "text-orange-400",
-    // 11: ODA (Violet)
+    // 11: ODA (Purple)
     "11A": "text-violet-400",
     "11B": "text-violet-400",
-    // 12: RT+ (Violet)
+    // 12: RT+ (Purple)
     "12A": "text-violet-400",
     "12B": "text-violet-400",
-    // 13: RP (Violet)
+    // 13: RP (Purple)
     "13A": "text-violet-400",
     "13B": "text-violet-400",
     // 14: EON (Yellow)
@@ -185,7 +185,7 @@ const decodeRdsByte = (b: number): string => {
   return '.';
 };
 
-// Helper to get safe ASCII char
+// Helper to get safe ASCII character
 const toAscii = (val: number) => {
     return decodeRdsByte(val);
 };
@@ -274,59 +274,67 @@ const ChartBody = React.memo(({ chartData, onClose }: { chartData: any[], onClos
         </button>
       </div>
       <div className="flex-1 p-2 md:p-6 flex flex-row gap-4 md:gap-6 overflow-hidden">
-        {/* Pie Chart */}
-        <div className="flex-1 min-w-0 h-full">
-          <ResponsiveContainer width="100%" height="100%">
-            <PieChart>
-              <Pie
-                data={chartData}
-                cx="50%"
-                cy="50%"
-                innerRadius={60}
-                outerRadius={120}
-                paddingAngle={2}
-                dataKey="percentage"
-                nameKey="name"
-                isAnimationActive={false}
-              >
-                {chartData.map((entry, index) => (
-                  <Cell key={`cell-${index}`} fill={entry.fill} />
-                ))}
-              </Pie>
-              <RechartsTooltip 
-                separator=": "
-                formatter={(value: any, name: any, props: any) => [`${props.payload.percentage}%`, `Group ${name}`]}
-                contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' }}
-                itemStyle={{ color: '#f8fafc' }}
-              />
-              <Legend content={renderLegend} />
-            </PieChart>
-          </ResponsiveContainer>
-        </div>
-        {/* Bar Chart */}
-        <div className="flex-1 min-w-0 h-full">
-           <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
-                <XAxis type="number" domain={[0, 100]} stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `${val}%`} />
-                <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={10} width={40} />
-                <RechartsTooltip 
-                  cursor={{fill: '#1e293b'}}
-                  labelFormatter={() => ''}
-                  labelStyle={{ display: 'none', margin: 0 }}
-                  separator=": "
-                  formatter={(value: any, name: any, props: any) => [`${props.payload.percentage}%`, `Group ${props.payload.name}`]}
-                  contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc', padding: '10px' }}
-                  itemStyle={{ color: '#f8fafc' }}
-                />
-                <Bar dataKey="percentage" radius={[0, 4, 4, 0]} isAnimationActive={false}>
-                  {chartData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={entry.fill} />
-                  ))}
-                </Bar>
-              </BarChart>
-           </ResponsiveContainer>
-        </div>
+        {chartData.length === 0 ? (
+          <div className="flex w-full items-center justify-center text-slate-500 italic">
+            Function unavailable: No RDS group has been detected yet.
+          </div>
+        ) : (
+          <>
+            {/* Pie Chart */}
+            <div className="flex-1 min-w-0 h-full">
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={chartData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={60}
+                    outerRadius={120}
+                    paddingAngle={2}
+                    dataKey="percentage"
+                    nameKey="name"
+                    isAnimationActive={false}
+                  >
+                    {chartData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={entry.fill} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip 
+                    separator=": "
+                    formatter={(value: any, name: any, props: any) => [`${props.payload.percentage}%`, `Group ${name}`]}
+                    contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc' }}
+                    itemStyle={{ color: '#f8fafc' }}
+                  />
+                  <Legend content={renderLegend} />
+                </PieChart>
+              </ResponsiveContainer>
+            </div>
+            {/* Bar Chart */}
+            <div className="flex-1 min-w-0 h-full">
+               <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={chartData} layout="vertical" margin={{ top: 5, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" stroke="#334155" horizontal={false} />
+                    <XAxis type="number" domain={[0, 100]} stroke="#94a3b8" fontSize={10} tickFormatter={(val) => `${val}%`} />
+                    <YAxis dataKey="name" type="category" stroke="#94a3b8" fontSize={10} width={40} />
+                    <RechartsTooltip 
+                      cursor={{fill: '#1e293b'}}
+                      labelFormatter={() => ''}
+                      labelStyle={{ display: 'none', margin: 0 }}
+                      separator=": "
+                      formatter={(value: any, name: any, props: any) => [`${props.payload.percentage}%`, `Group ${props.payload.name}`]}
+                      contentStyle={{ backgroundColor: '#0f172a', borderColor: '#334155', color: '#f8fafc', padding: '10px' }}
+                      itemStyle={{ color: '#f8fafc' }}
+                    />
+                    <Bar dataKey="percentage" radius={[0, 4, 4, 0]} isAnimationActive={false}>
+                      {chartData.map((entry, index) => (
+                        <Cell key={`cell-${index}`} fill={entry.fill} />
+                      ))}
+                    </Bar>
+                  </BarChart>
+               </ResponsiveContainer>
+            </div>
+          </>
+        )}
       </div>
     </div>
   </div>
@@ -366,7 +374,7 @@ const GroupDistributionChart: React.FC<{
       setChartData(newData);
     };
 
-    updateData(); // immediate
+    updateData(); // Immediate
     const interval = setInterval(updateData, 3000);
     return () => clearInterval(interval);
   }, []);
@@ -377,7 +385,7 @@ const GroupDistributionChart: React.FC<{
 export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onToggle, onReset }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const detailLogRef = useRef<HTMLDivElement>(null);
-  // Refs for the 4 hex columns
+  // References for the 4 hex columns
   const hexLogRefs = useRef<(HTMLDivElement | null)[]>([]);
   
   const [viewMode, setViewMode] = useState<ViewMode>('STREAM');
@@ -728,6 +736,8 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
           setFrozenSequence([]);
           dabTargetGroupRef.current = null;
           dabInfoRef.current = "";
+          tmcTargetGroupRef.current = null;
+          tmcInfoRef.current = "";
       }
   }, [data.groupTotal]);
 
@@ -737,10 +747,21 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
       setSlcLogs([]);
       dabTargetGroupRef.current = null;
       dabInfoRef.current = "";
+      tmcTargetGroupRef.current = null;
+      tmcInfoRef.current = "";
   }, [data.pi]);
 
   // Determine what to display for Stream View
   const displaySequence = isPaused ? frozenSequence : data.groupSequence;
+
+  const groupCountDeps = ALL_GROUPS.map(g => !!data.groupCounts[g]).join(',');
+  const groupOptions = useMemo(() => {
+    return ALL_GROUPS.map(g => (
+        <option key={g} value={g} className="bg-slate-800 text-white">
+            {g}{data.groupCounts[g] ? ' 🟢' : ''}
+        </option>
+    ));
+  }, [groupCountDeps]);
 
   return (
     <div className={`border rounded-lg transition-all duration-300 overflow-hidden relative ${active ? 'bg-black border-slate-700' : 'bg-slate-900/30 border-slate-800'}`}>
@@ -839,13 +860,20 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                      <div className="p-2 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
                          <div className="flex items-center gap-2">
                              <span className="text-slate-400 text-[10px] font-bold uppercase">Select Group to Monitor:</span>
-                             <select 
-                                 value={detailGroup}
-                                 onChange={(e) => updateDetailGroup(e.target.value)}
-                                 className="bg-slate-800 text-white text-[10px] font-bold py-1 px-2 rounded border border-slate-700 focus:outline-none focus:border-blue-500 cursor-pointer hover:bg-slate-700"
-                             >
-                                 {ALL_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                             </select>
+                             <div className="relative min-w-[70px]">
+                                 <div className="absolute inset-0 bg-slate-800 text-white text-[10px] font-bold py-1 px-2 rounded border border-slate-700 pointer-events-none flex items-center justify-between">
+                                     <span>{detailGroup}</span>
+                                     <svg className="w-2.5 h-2.5 ml-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                                 </div>
+                                 <select 
+                                     value={detailGroup}
+                                     onChange={(e) => updateDetailGroup(e.target.value)}
+                                     className="w-full text-[10px] font-bold py-1 px-2 rounded border border-transparent focus:outline-none cursor-pointer appearance-none relative z-10"
+                                     style={{ color: 'transparent', backgroundColor: 'transparent' }}
+                                 >
+                                     {groupOptions}
+                                 </select>
+                             </div>
                          </div>
                          <span className="text-[10px] text-slate-500 font-mono uppercase">Binary & ASCII Decoding</span>
                      </div>
@@ -878,14 +906,19 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                          <div key={colIdx} className="flex flex-col h-full bg-slate-950 border border-slate-800 rounded overflow-hidden">
                              {/* Column Header */}
                              <div className="flex justify-between items-center p-2 bg-slate-900 border-b border-slate-800">
-                                 <select 
-                                     value={hexCols[colIdx]}
-                                     onChange={(e) => updateHexCol(colIdx, e.target.value)}
-                                     className="w-full bg-slate-800 text-white text-[10px] font-bold py-1 px-2 rounded border border-slate-700 focus:outline-none focus:border-blue-500 appearance-none cursor-pointer hover:bg-slate-700 text-center"
-                                     style={{ backgroundImage: 'none' }}
-                                 >
-                                     {ALL_GROUPS.map(g => <option key={g} value={g}>{g}</option>)}
-                                 </select>
+                                 <div className="relative w-full">
+                                     <div className="absolute inset-0 bg-slate-800 text-white text-[10px] font-bold py-1 px-2 rounded border border-slate-700 pointer-events-none flex items-center justify-center text-center">
+                                         <span>{hexCols[colIdx]}</span>
+                                     </div>
+                                     <select 
+                                         value={hexCols[colIdx]}
+                                         onChange={(e) => updateHexCol(colIdx, e.target.value)}
+                                         className="w-full text-[10px] font-bold py-1 px-2 rounded border border-transparent focus:outline-none appearance-none cursor-pointer text-center relative z-10"
+                                         style={{ color: 'transparent', backgroundColor: 'transparent' }}
+                                     >
+                                         {groupOptions}
+                                     </select>
+                                 </div>
                              </div>
 
                              {/* Log Area */}

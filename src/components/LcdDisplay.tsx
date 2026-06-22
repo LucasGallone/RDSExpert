@@ -63,7 +63,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
     }
   });
 
-  // Cycle through modes according to user request: 
+  // Cycle through modes: 
   // OFF -> RT_PROGRESSIVE -> ALL -> PS_ONLY -> RT_ONLY -> OFF
   const cycleMode = () => {
     setUnderscoreMode(prev => {
@@ -360,7 +360,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
              <FlagBadge active={data.ms} label="MUSIC" />
            </div>
 
-           {/* Alignement vertical PI ajusté avec items-center pour un centrage parfait */}
+           {/* Vertical PI alignment adjusted with item-center for perfect centering */}
            <div className="flex items-center space-x-3">
               <span className={`text-xl font-bold pt-1 ${factoryPiInfo ? 'text-red-500' : 'text-slate-400'}`}>PI :</span>
               <div className="relative cursor-default" onMouseEnter={handlePiMouseEnter} onMouseLeave={handlePiMouseLeave}>
