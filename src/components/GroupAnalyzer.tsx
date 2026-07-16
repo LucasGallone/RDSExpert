@@ -341,11 +341,31 @@ const ChartBody = React.memo(({ chartData, onClose }: { chartData: any[], onClos
   );
 });
 
+const generateChartData = (currentData: RdsData) => {
+    const errorCount = currentData.groupCounts["--"] || 0;
+    const validTotal = Math.max(0, currentData.groupTotal - errorCount);
+    
+    let newData = ALL_GROUPS.map(grp => {
+      const count = currentData.groupCounts[grp] || 0;
+      const percentage = validTotal > 0 ? ((count / validTotal) * 100).toFixed(1) : "0.0";
+      return {
+        name: grp,
+        count: count,
+        percentage: parseFloat(percentage),
+        fill: HEX_COLORS[GROUP_COLORS[grp] || GROUP_COLORS["default"]] || "#cbd5e1"
+      };
+    }).filter(item => item.percentage > 0);
+    
+    // Sort by percentage descending
+    newData.sort((a, b) => b.percentage - a.percentage);
+    return newData;
+};
+
 const GroupDistributionChart: React.FC<{
   data: RdsData;
   onClose: () => void;
 }> = ({ data, onClose }) => {
-  const [chartData, setChartData] = useState<any[]>([]);
+  const [chartData, setChartData] = useState<any[]>(() => generateChartData(data));
   const dataRef = useRef(data);
 
   // We assign current data continuously without causing re-renders of the chart
@@ -354,27 +374,10 @@ const GroupDistributionChart: React.FC<{
   // Update immediately on mount, then every 3 seconds
   useEffect(() => {
     const updateData = () => {
-      const currentData = dataRef.current;
-      const errorCount = currentData.groupCounts["--"] || 0;
-      const validTotal = Math.max(0, currentData.groupTotal - errorCount);
-      
-      let newData = ALL_GROUPS.map(grp => {
-        const count = currentData.groupCounts[grp] || 0;
-        const percentage = validTotal > 0 ? ((count / validTotal) * 100).toFixed(1) : "0.0";
-        return {
-          name: grp,
-          count: count,
-          percentage: parseFloat(percentage),
-          fill: HEX_COLORS[GROUP_COLORS[grp] || GROUP_COLORS["default"]] || "#cbd5e1"
-        };
-      }).filter(item => item.percentage > 0);
-      
-      // Sort by percentage descending
-      newData.sort((a, b) => b.percentage - a.percentage);
-      setChartData(newData);
+      setChartData(generateChartData(dataRef.current));
     };
 
-    updateData(); // Immediate
+    // No need to update immediately since it's initialized correctly
     const interval = setInterval(updateData, 3000);
     return () => clearInterval(interval);
   }, []);
@@ -741,10 +744,12 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
       }
   }, [data.groupTotal]);
 
-  // Explicitly reset ODA logs when PI changes (station change)
+  // Explicitly reset ODA logs and viewer logs when PI changes (station change)
   useEffect(() => {
       setOdaLogs([]);
       setSlcLogs([]);
+      setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
+      setDetailLogs([]);
       dabTargetGroupRef.current = null;
       dabInfoRef.current = "";
       tmcTargetGroupRef.current = null;

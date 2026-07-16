@@ -2602,11 +2602,7 @@ const App: React.FC = () => {
         const cRtMsk = state.abFlag ? state.rtMask1 : state.rtMask0;
         const termIdx = cRtBuf.indexOf('\r'); 
         let isRtC = termIdx !== -1 ? cRtMsk.slice(0, termIdx).every(Boolean) : cRtMsk.every(Boolean);
-        let rawRt = renderRdsBuffer(cRtBuf, false, true); 
-        if (termIdx !== -1) {
-          // Include the terminator character in the history for technical code display
-          rawRt = rawRt.substring(0, termIdx + 1);
-        }
+        let rawRt = renderRdsBuffer(cRtBuf, false, true).replace(/ +$/, '');
         if (isRtC) {
           if (rawRt !== state.rtCandidateString) { 
             state.rtCandidateString = rawRt; 
@@ -2617,7 +2613,8 @@ const App: React.FC = () => {
             if ((!last || last.text !== rawRt) && rawRt.trim().length > 0) { 
               state.rtHistoryBuffer.unshift({ 
                 time: new Date().toLocaleTimeString(), 
-                text: rawRt 
+                text: rawRt,
+                isB: state.abFlag
               }); 
               if (state.rtHistoryBuffer.length > 200) {
                 state.rtHistoryBuffer.pop();
@@ -3203,10 +3200,7 @@ const App: React.FC = () => {
           const cRtMsk = state.abFlag ? state.rtMask1 : state.rtMask0;
           const termIdx = cRtBuf.indexOf('\r'); 
           let isRtC = termIdx !== -1 ? cRtMsk.slice(0, termIdx).every(Boolean) : cRtMsk.every(Boolean);
-          let rawRt = renderRdsBuffer(cRtBuf, false, true); 
-          if (termIdx !== -1) {
-            rawRt = rawRt.substring(0, termIdx + 1);
-          }
+          let rawRt = renderRdsBuffer(cRtBuf, false, true).replace(/ +$/, '');
           if (isRtC) {
             if (rawRt !== state.rtCandidateString) { 
               state.rtCandidateString = rawRt; 
@@ -3217,7 +3211,8 @@ const App: React.FC = () => {
               if ((!last || last.text !== rawRt) && rawRt.trim().length > 0) { 
                 state.rtHistoryBuffer.unshift({ 
                   time: new Date(virtualTime).toLocaleTimeString(), 
-                  text: rawRt 
+                  text: rawRt,
+                  isB: state.abFlag
                 }); 
                 if (state.rtHistoryBuffer.length > 200) {
                   state.rtHistoryBuffer.pop();

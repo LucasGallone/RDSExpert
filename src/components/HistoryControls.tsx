@@ -48,6 +48,10 @@ interface HistoryControlsProps {
 export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRecording, serverUrl }) => {
   const [showPsHistory, setShowPsHistory] = useState(false);
   const [showRtHistory, setShowRtHistory] = useState(false);
+  const [showRtLine, setShowRtLine] = useState(() => {
+    const saved = localStorage.getItem('rds_show_rt_line');
+    return saved !== null ? saved === 'true' : true;
+  });
   const [showExportModal, setShowExportModal] = useState(false);
   const [showBandscanModal, setShowBandscanModal] = useState(false);
   const [exportContent, setExportContent] = useState('');
@@ -69,6 +73,10 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     (window as any).showRdsApiError = triggerApiError;
     return () => { (window as any).showRdsApiError = undefined; };
   }, []);
+
+  useEffect(() => {
+    localStorage.setItem('rds_show_rt_line', showRtLine.toString());
+  }, [showRtLine]);
 
   // Resolve PTY list using hybrid standard
   const ptyList = PTY_COMBINED;
@@ -621,24 +629,53 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
                         const code = char.charCodeAt(0);
                         return code < 32 ? `<${code.toString(16).toUpperCase().padStart(2, '0')}>` : char;
                     }).join('');
-                    return `[${item.time}] ${formattedText}`;
+                    const linePrefix = (showRtLine && item.isB !== undefined) ? `[Line ${item.isB ? 'B' : 'A'}] ` : '';
+                    return `[${item.time}] ${linePrefix}${formattedText}`;
                 }}
                 renderHeader={(sortState) => (
-                    <tr className="border-b border-slate-700 text-slate-500 bg-slate-900 sticky top-0 z-10">
-                        <th className="p-3 w-24">
-                            <div className="flex items-center gap-1 cursor-pointer hover:text-white select-none transition-colors" onClick={sortState?.onToggleSort}>
+                    <tr className="text-slate-500 sticky top-0 z-10 shadow-[0_1px_0_0_theme(colors.slate.700)] select-none">
+                        <th className="p-3 w-24 bg-slate-900">
+                            <div className="flex items-center gap-1 cursor-pointer hover:text-white transition-colors" onClick={sortState?.onToggleSort}>
                                 Time
                                 {sortState && (
                                     <svg className={`w-3 h-3 transition-transform ${sortState.sortOrder === 'asc' ? 'rotate-180' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" /></svg>
                                 )}
                             </div>
                         </th>
-                        <th className="p-3">Radiotext</th>
+                        {showRtLine && <th className="py-3 px-2 w-10 text-center bg-slate-900">Line</th>}
+                        <th className="p-3 bg-slate-900">Radiotext</th>
                     </tr>
+                )}
+                extraActions={(
+                    <button 
+                        onClick={() => setShowRtLine(!showRtLine)}
+                        className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors uppercase flex items-center gap-1.5 ${showRtLine ? 'bg-blue-900/40 text-blue-400 border-blue-600 hover:bg-yellow-900/60' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'}`}
+                    >
+                        {showRtLine ? (
+                            <>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                                SHOW A/B LINES
+                            </>
+                        ) : (
+                            <>
+                                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                                SHOW A/B LINES
+                            </>
+                        )}
+                    </button>
                 )}
                 renderRow={(item: RtHistoryItem, i) => (
                     <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
                         <td className="p-3 text-slate-400 border-r border-slate-800/50 align-top">{item.time}</td>
+                        {showRtLine && (
+                            <td className="py-3 px-2 border-r border-slate-800/50 align-top text-center w-10">
+                                {item.isB !== undefined && (
+                                    <span className={`inline-flex items-center justify-center w-5 h-5 leading-none text-xs font-bold rounded select-none border ${item.isB ? 'bg-blue-900/50 text-blue-400 border-blue-700/50' : 'bg-indigo-900/50 text-indigo-400 border-indigo-700/50'}`}>
+                                        {item.isB ? 'B' : 'A'}
+                                    </span>
+                                )}
+                            </td>
+                        )}
                         <td className="p-3 text-white whitespace-pre-wrap leading-relaxed">
                             {item.text.split('').map((char, idx) => {
                                 const code = char.charCodeAt(0);
@@ -720,9 +757,10 @@ export interface HistoryViewerProps<T> {
     storageKey?: string;
     enableTimeSort?: boolean;
     sortStorageKey?: string;
+    extraActions?: React.ReactNode;
 }
 
-export const HistoryViewer = <T extends any>({ title, data, onClose, renderHeader, renderRow, getCopyText, fullCopyFormatter, emptyMessage, copyReverse, allowUnderscoreToggle, storageKey, enableTimeSort, sortStorageKey }: HistoryViewerProps<T>) => {
+export const HistoryViewer = <T extends any>({ title, data, onClose, renderHeader, renderRow, getCopyText, fullCopyFormatter, emptyMessage, copyReverse, allowUnderscoreToggle, storageKey, enableTimeSort, sortStorageKey, extraActions }: HistoryViewerProps<T>) => {
     const [paused, setPaused] = useState(false);
     const [frozenData, setFrozenData] = useState<T[]>([]);
     const [copyStatus, setCopyStatus] = useState<'IDLE' | 'COPIED'>('IDLE');
@@ -880,6 +918,7 @@ export const HistoryViewer = <T extends any>({ title, data, onClose, renderHeade
                     )}
                  </button>
              )}
+             {extraActions}
         </div>
     );
 

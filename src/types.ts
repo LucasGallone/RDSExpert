@@ -125,6 +125,7 @@ export interface PsHistoryItem {
 export interface RtHistoryItem {
     time: string;
     text: string;
+    isB?: boolean;
 }
 
 export interface TdcHistoryItem {
