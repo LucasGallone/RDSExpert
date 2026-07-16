@@ -1,5 +1,11 @@
 # RDSExpert Changelog
 
+### --- 16/07/2026 ---
+- Added a feature to the "Radiotext History" that indicates which line (A or B) a message was sent on. It can be enabled or disabled upon request.
+- Fixed a bug that displayed only 1x <0D> in the "Radiotext History" for messages containing multiple.
+- Fixed a display bug where, for a few milliseconds, the message "Function unavailable: No RDS has been detected yet" appeared upon clicking the "Show Group Distribution Chart" button in the "Group Monitor", even though an RDS had actually been detected.
+- Fixed a bug where, when a user switched from one station to another while monitoring a group with the "Group Content" option enabled, data from a group not transmitted by the second station continued to be displayed.
+
 ### --- 22/06/2026 ---
 - Added a green circle indicator to the Group Monitor, in the RDS group selection list. This makes it easier to see which groups are actually being transmitted, and therefore select them for monitoring.
 - Added the ability to sort data in ascending and descending order in the PS/PTY/PTYN history and in the Radiotext history. Users can now view the most recent data at the bottom of the list by clicking the new arrow icon in the "Time" column.
