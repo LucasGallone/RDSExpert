@@ -291,7 +291,13 @@ export const TmcMap: React.FC<TmcMapProps> = ({
       setResolvedCount(totalMapped);
 
       if (totalMapped === 0 && uniqueCodes.length > 0) {
-        setError(`No TMC location data available for this country (CID:${cid}, TABCD:${tabcd}). No local data file found and no TMC locations in OpenStreetMap. You can add local data by placing a ${cid}_${tabcd}.json file in the tmc/ folder.`);
+        if (serviceInfo.ltn === 0 && !manualCountry) {
+          // Broadcaster has not yet transmitted Group 8A Service Info (LTN).
+          // Do not display a premature error while table identification is pending.
+          setError(null);
+        } else {
+          setError(`No TMC location data available for this country (CID:${cid}, TABCD:${tabcd}). No local data file found and no TMC locations in OpenStreetMap.`);
+        }
       } else {
         setError(null);
       }
