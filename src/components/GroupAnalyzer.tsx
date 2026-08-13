@@ -954,6 +954,17 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
       }
   }, [data.groupTotal]);
 
+  // Re-synchronize detail or hex logs when Group Monitor is opened (active becomes true)
+  useEffect(() => {
+      if (active && data.rawGroupSequence && data.rawGroupSequence.length > 0) {
+          if (viewMode === 'DETAIL') {
+              setDetailLogs(buildDetailLogs(data.rawGroupSequence, detailGroup));
+          } else if (viewMode === 'HEX') {
+              setHexLogs(buildHexLogs(data.rawGroupSequence, hexCols));
+          }
+      }
+  }, [active]);
+
   // Explicitly reset or rebuild ODA logs and viewer logs when PI changes (station change)
   useEffect(() => {
       dabTargetGroupRef.current = null;
@@ -969,13 +980,23 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
           dabInfoRef.current = res.dabInfo;
           tmcTargetGroupRef.current = res.tmcTargetGroup;
           tmcInfoRef.current = res.tmcInfo;
+          if (viewMode === 'DETAIL') {
+              setDetailLogs(buildDetailLogs(data.rawGroupSequence, detailGroup));
+          } else {
+              setDetailLogs([]);
+          }
+          if (viewMode === 'HEX') {
+              setHexLogs(buildHexLogs(data.rawGroupSequence, hexCols));
+          } else {
+              setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
+          }
       } else {
           setOdaLogs([]);
           setSlcLogs([]);
+          setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
+          setDetailLogs([]);
       }
-      setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
-      setDetailLogs([]);
-  }, [data.pi, data.rawGroupSequence, buildOdaAndSlcLogs, data.tmcServiceInfo?.providerName]);
+  }, [data.pi, data.rawGroupSequence, buildOdaAndSlcLogs, data.tmcServiceInfo?.providerName, viewMode, detailGroup, hexCols]);
 
   // Determine what to display for Stream View
   const displaySequence = isPaused ? frozenSequence : data.groupSequence;
