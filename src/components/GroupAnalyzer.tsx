@@ -1,5 +1,6 @@
 
 import React, { useRef, useEffect, useState, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { RdsData } from '../types';
 import { ODA_MAP } from '../constants';
 import { PieChart, Pie, Cell, Tooltip as RechartsTooltip, Legend, ResponsiveContainer, BarChart, Bar, XAxis, YAxis, CartesianGrid } from 'recharts';
@@ -190,6 +191,25 @@ const toAscii = (val: number) => {
     return decodeRdsByte(val);
 };
 
+const escapeRegExp = (string: string) => {
+    return string.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+};
+
+const renderHighlightedPart = (text: string, query: string) => {
+    if (!query) return text;
+    const escapedQuery = escapeRegExp(query);
+    const parts = text.split(new RegExp(`(${escapedQuery})`, 'gi'));
+    return (
+        <>
+            {parts.map((p, i) => 
+                p.toLowerCase() === query.toLowerCase() 
+                    ? <span key={i} className="bg-yellow-400 text-black font-bold rounded-sm px-[1px]">{p}</span> 
+                    : p
+            )}
+        </>
+    );
+};
+
 const GroupStatItem: React.FC<{
     grp: string;
     count: number;
@@ -261,8 +281,8 @@ const ChartBody = React.memo(({ chartData, onClose }: { chartData: any[], onClos
     );
   }, []);
 
-  return (
-  <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+  return createPortal(
+  <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
     <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full max-w-5xl h-[80vh] flex flex-col">
       <div className="flex items-center justify-between p-4 border-b border-slate-800">
         <h2 className="text-slate-200 font-bold uppercase tracking-wider text-sm flex items-center gap-2">
@@ -337,7 +357,8 @@ const ChartBody = React.memo(({ chartData, onClose }: { chartData: any[], onClos
         )}
       </div>
     </div>
-  </div>
+  </div>,
+  document.body
   );
 });
 
@@ -408,6 +429,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
   // Detailed Viewer State
   const [detailGroup, setDetailGroup] = useState<string>(() => localStorage.getItem('rds_detail_group') || "0A");
   const [detailLogs, setDetailLogs] = useState<LogItem[]>([]);
+  const [detailSearchQuery, setDetailSearchQuery] = useState<string>('');
   const [showChart, setShowChart] = useState<boolean>(false);
   const handleCloseChart = useCallback(() => setShowChart(false), []);
 
@@ -429,6 +451,13 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
   useEffect(() => {
       localStorage.setItem('rds_detail_group', detailGroup);
   }, [detailGroup]);
+
+  // Reset search query when the Group Monitor is closed
+  useEffect(() => {
+      if (!active) {
+          setDetailSearchQuery('');
+      }
+  }, [active]);
 
   // Helper to ensure scroll happens after paint
   const scrollToBottom = (element: HTMLElement | null) => {
@@ -684,9 +713,10 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                         // Layout: TIME (8 chars) | HEX (19 chars) | NEW FORMAT
                         const line = `${grp.time}      ${hex}\u0003${groupTypeStr.padEnd(3, ' ')} ${tpStr}\u0001${ptyBin} ${b2RestBin}  ${b3HighBin} ${b3LowBin}  ${b4HighBin} ${b4LowBin}\u0002${dec3H} ${dec3L} ${dec4H} ${dec4L}\u0002'${char3H}${char3L}' '${char4H}${char4L}'`;
                         
-                        // Append to bottom, keep last 100 lines
+                        // Append to bottom, keep last 1000 lines for 8A (at least 1 minute of data), 200 for others
                         const newItem: LogItem = { id: logIdCounter.current++, text: line };
-                        next = [...next, newItem].slice(-100); 
+                        const limit = detailGroup === "8A" ? 1000 : 200;
+                        next = [...next, newItem].slice(-limit); 
                         changed = true;
                     }
                 });
@@ -699,9 +729,14 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
   const toggleMode = (mode: ViewMode) => {
       if (viewMode === mode) {
           setViewMode('STREAM'); // Toggle off -> go back to stream
+          if (mode === 'DETAIL') setDetailSearchQuery('');
       } else {
           setViewMode(mode);
-          if (mode === 'DETAIL') setDetailLogs([]);
+          if (mode === 'DETAIL') {
+              setDetailLogs([]);
+          } else {
+              setDetailSearchQuery('');
+          }
           if (mode === 'HEX') setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
       }
   };
@@ -767,6 +802,11 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
         </option>
     ));
   }, [groupCountDeps]);
+
+  const filteredDetailLogs = useMemo(() => {
+      if (!detailSearchQuery) return detailLogs;
+      return detailLogs.filter(log => log.text.toUpperCase().includes(detailSearchQuery.toUpperCase()));
+  }, [detailLogs, detailSearchQuery]);
 
   return (
     <div className={`border rounded-lg transition-all duration-300 overflow-hidden relative ${active ? 'bg-black border-slate-700' : 'bg-slate-900/30 border-slate-800'}`}>
@@ -862,9 +902,9 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
             {/* DETAIL MODE */}
             {viewMode === 'DETAIL' && (
                 <div className="h-96 bg-black flex flex-col border-b border-slate-800">
-                     <div className="p-2 bg-slate-900 border-b border-slate-800 flex justify-between items-center">
-                         <div className="flex items-center gap-2">
-                             <span className="text-slate-400 text-[10px] font-bold uppercase">Select Group to Monitor:</span>
+                     <div className="p-2 bg-slate-900 border-b border-slate-800 flex justify-between items-center flex-wrap gap-2">
+                         <div className="flex items-center gap-2 flex-wrap">
+                             <span className="text-slate-400 text-[10px] font-bold uppercase hidden sm:inline">Select Group to Monitor:</span>
                              <div className="relative min-w-[70px]">
                                  <div className="absolute inset-0 bg-slate-800 text-white text-[10px] font-bold py-1 px-2 rounded border border-slate-700 pointer-events-none flex items-center justify-between">
                                      <span>{detailGroup}</span>
@@ -879,25 +919,45 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                                      {groupOptions}
                                  </select>
                              </div>
+                             
+                             <div className="w-px h-4 bg-slate-700 mx-1 hidden sm:block"></div>
+                             
+                             <div className="relative flex items-center">
+                                 <input 
+                                     type="text" 
+                                     placeholder="Search..."
+                                     value={detailSearchQuery}
+                                     onChange={(e) => setDetailSearchQuery(e.target.value.toUpperCase())}
+                                     className="bg-slate-800 text-white text-[10px] font-bold py-1 px-2 pr-6 rounded border border-slate-700 focus:outline-none focus:border-slate-500 w-[80px] sm:w-[120px]"
+                                 />
+                                 {detailSearchQuery && (
+                                     <button 
+                                         onClick={() => setDetailSearchQuery('')}
+                                         className="absolute right-1 text-red-500 hover:text-red-400 p-0.5"
+                                     >
+                                         <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={3} d="M6 18L18 6M6 6l12 12" /></svg>
+                                     </button>
+                                 )}
+                             </div>
                          </div>
-                         <span className="text-[10px] text-slate-500 font-mono uppercase">Binary & ASCII Decoding</span>
+                         <span className="text-[10px] text-slate-500 font-mono uppercase hidden md:inline">Binary & ASCII Decoding</span>
                      </div>
                      
                      <div className="flex-1 overflow-y-auto p-4 font-mono text-xs custom-scrollbar bg-black" ref={detailLogRef}>
-                         {detailLogs.map((item) => (
+                         {filteredDetailLogs.map((item) => (
                              <div key={item.id} className="text-green-400 whitespace-pre hover:bg-slate-900/50">
-                                 <span className="hidden md:inline">{item.text.substring(0, 14)}</span>
+                                 <span className="hidden md:inline">{renderHighlightedPart(item.text.substring(0, 14), detailSearchQuery)}</span>
                                  {item.text.substring(14).split(/(\u0001|\u0002|\u0003)/).map((part, i) => {
                                      if (part === '\u0003') return <React.Fragment key={i}><span className="hidden md:inline">{"      "}</span><span className="md:hidden">{"   "}</span></React.Fragment>;
                                      if (part === '\u0001') return <React.Fragment key={i}><span className="hidden md:inline">{"      "}</span><span className="md:hidden">{" "}</span></React.Fragment>;
                                      if (part === '\u0002') return <React.Fragment key={i}><span className="hidden md:inline">{"      "}</span><span className="md:hidden">{"  "}</span></React.Fragment>;
-                                     return <React.Fragment key={i}>{part}</React.Fragment>;
+                                     return <React.Fragment key={i}>{renderHighlightedPart(part, detailSearchQuery)}</React.Fragment>;
                                  })}
                              </div>
                          ))}
-                         {detailLogs.length === 0 && (
+                         {filteredDetailLogs.length === 0 && (
                              <div className="text-slate-700 italic text-center mt-10">
-                                {isPaused ? 'Viewer Paused' : `Waiting for Group ${detailGroup} data...`}
+                                {isPaused ? 'Viewer Paused' : (detailSearchQuery ? 'No results found' : `Waiting for Group ${detailGroup} data...`)}
                              </div>
                          )}
                      </div>

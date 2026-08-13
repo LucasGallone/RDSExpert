@@ -1,15 +1,44 @@
 
 import React, { useState, useEffect } from 'react';
 import { RdsData, PTY_RDS, PTY_RBDS, PTY_COMBINED } from '../types';
+import { HistoryViewerWrapper } from './HistoryControls';
 
 interface InfoGridProps {
   data: RdsData;
+  onEonTaHistoryClick?: () => void;
 }
 
-export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
+export const InfoGrid: React.FC<InfoGridProps> = ({ data, onEonTaHistoryClick }) => {
   const [sortAf, setSortAf] = useState(() => localStorage.getItem('rds_sort_af') === 'true');
   const [expandedHeader, setExpandedHeader] = useState<string | null>(null);
   const [expandedEon, setExpandedEon] = useState<string | null>(null);
+  const [selectedEonPi, setSelectedEonPi] = useState<string | null>(null);
+  const [eonSortOrder, setEonSortOrder] = useState<'desc' | 'asc'>(() => {
+    const saved = localStorage.getItem('rds_eon_ps_history_sort');
+    return (saved === 'asc' || saved === 'desc') ? saved : 'desc';
+  });
+
+  const [eonListUnderscores, setEonListUnderscores] = useState(() => {
+    const saved = localStorage.getItem('rds_eon_list_underscores');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  const [eonHistoryUnderscores, setEonHistoryUnderscores] = useState(() => {
+    const saved = localStorage.getItem('rds_eon_history_underscores');
+    return saved !== null ? saved === 'true' : true;
+  });
+
+  useEffect(() => {
+    localStorage.setItem('rds_eon_ps_history_sort', eonSortOrder);
+  }, [eonSortOrder]);
+
+  useEffect(() => {
+    localStorage.setItem('rds_eon_list_underscores', eonListUnderscores.toString());
+  }, [eonListUnderscores]);
+
+  useEffect(() => {
+    localStorage.setItem('rds_eon_history_underscores', eonHistoryUnderscores.toString());
+  }, [eonHistoryUnderscores]);
 
   useEffect(() => {
     localStorage.setItem('rds_sort_af', sortAf.toString());
@@ -228,15 +257,45 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
 
       {/* EON (Enhanced Other Networks) Card */}
       <div className="bg-slate-800/50 border border-slate-700 rounded-lg p-4">
-        <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2 mb-4">
-            <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
-            <span className="truncate">Enhanced Other Networks (EON)</span>
-            {eonKeys.length > 0 && (
-              <span className="hidden sm:inline-block ml-2 text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-600 shrink-0">
-                STATIONS FOUND: {eonKeys.length}
-              </span>
-            )}
-        </h3>
+        <div className="flex items-center justify-between mb-4">
+            <h3 className="text-slate-400 text-xs font-bold uppercase tracking-wider flex items-center gap-2">
+                <svg className="w-4 h-4 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3.055 11H5a2 2 0 012 2v1a2 2 0 002 2 2 2 0 012 2v2.945M8 3.935V5.5A2.5 2.5 0 0010.5 8h.5a2 2 0 012 2 2 2 0 104 0 2 2 0 012-2h1.064M15 20.488V18a2 2 0 012-2h3.064M21 12a9 9 0 11-18 0 9 9 0 0118 0z" /></svg>
+                <span className="truncate">Enhanced Other Networks (EON)</span>
+                {eonKeys.length > 0 && (
+                  <span className="hidden sm:inline-block ml-2 text-[10px] bg-slate-700 text-slate-300 px-2 py-0.5 rounded border border-slate-600 shrink-0">
+                    STATIONS FOUND: {eonKeys.length}
+                  </span>
+                )}
+            </h3>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={onEonTaHistoryClick}
+                className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors uppercase flex items-center gap-1.5 ${data.eonTaInfo?.isActive ? 'bg-yellow-500 text-yellow-950 border-yellow-400 hover:bg-yellow-400' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'}`}
+                title="View EON TA History"
+              >
+                EON TA HISTORY
+              </button>
+              {eonKeys.length > 0 && (
+                <button
+                  onClick={() => setEonListUnderscores(!eonListUnderscores)}
+                  className={`px-2 py-1 text-[10px] font-bold rounded border transition-colors uppercase flex items-center gap-1.5 ${eonListUnderscores ? 'bg-blue-900/40 text-blue-400 border-blue-600 hover:bg-yellow-900/60' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'}`}
+                  title="Toggle underscores in EON stations list"
+                >
+                  {eonListUnderscores ? (
+                    <>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                      UNDERSCORES ON
+                    </>
+                  ) : (
+                    <>
+                      <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                      UNDERSCORES OFF
+                    </>
+                  )}
+                </button>
+              )}
+            </div>
+        </div>
 
         {eonKeys.length > 0 ? (
             <div className="flex flex-col gap-2">
@@ -252,11 +311,21 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
                             >
                                 <span className="flex items-center gap-4">
                                     <span className="text-lg text-white">{eon.pi}</span>
-                                    <span className="text-slate-400 border-l border-slate-600 pl-4">{(eon.ps || "        ").replace(/ /g, '_')}</span>
+                                    <span className="text-slate-400 border-l border-slate-600 pl-4">{eonListUnderscores ? (eon.ps || "        ").replace(/ /g, '_') : (eon.ps || "        ")}</span>
                                 </span>
-                                <span className="text-[10px] text-slate-500 uppercase tracking-wide">
-                                    {isExpanded ? 'HIDE DETAILS' : 'SHOW DETAILS'}
-                                </span>
+                                <div className="flex items-center gap-3">
+                                    <div className="flex items-center gap-1.5 font-mono">
+                                        <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${eon.tp ? 'bg-green-500/20 text-green-400 border-green-500/50' : 'bg-slate-800/80 text-slate-600 border-slate-700/50'}`}>
+                                            TP
+                                        </span>
+                                        <span className={`px-1.5 py-0.5 text-[10px] font-bold rounded border ${eon.ta ? 'bg-red-500/20 text-red-400 border-red-500/50' : 'bg-slate-800/80 text-slate-600 border-slate-700/50'}`}>
+                                            TA
+                                        </span>
+                                    </div>
+                                    <span className="text-[10px] text-slate-500 uppercase tracking-wide">
+                                        {isExpanded ? 'CLICK TO HIDE DETAILS' : 'CLICK TO SHOW DETAILS'}
+                                    </span>
+                                </div>
                             </button>
 
                             {isExpanded && (
@@ -284,27 +353,44 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
                                     </div>
 
                                     {/* Column 2 */}
-                                    <div className="space-y-2">
-                                        <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-                                            <span className="text-slate-500">Linkage Information</span>
-                                            <span className="text-white font-bold">{eon.linkageInfo || "0000"}</span>
+                                    <div className="flex flex-col h-full justify-between space-y-2">
+                                        <div className="space-y-2">
+                                            <div className="flex justify-between items-center border-b border-slate-800 pb-1">
+                                                <span className="text-slate-500">Linkage Information</span>
+                                                <span className="text-white font-bold">{eon.linkageInfo || "0000"}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center border-b border-slate-800 pb-1">
+                                                <span className="text-slate-500">PTY</span>
+                                                <span className="text-white">{currentPtyName(eon.pty)} <span className="text-slate-600">[{eon.pty}]</span></span>
+                                            </div>
+                                            <div className="flex justify-between items-center border-b border-slate-800 pb-1">
+                                                <span className="text-slate-500">TP</span>
+                                                <span className={eon.tp ? "text-green-400 font-bold" : "text-slate-600"}>{eon.tp ? "Yes" : "No"}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center border-b border-slate-800 pb-1">
+                                                <span className="text-slate-500">TA</span>
+                                                <span className={eon.ta ? "text-red-400 font-bold" : "text-slate-600"}>{eon.ta ? "Yes" : "No"}</span>
+                                            </div>
+                                            <div className="flex justify-between items-center">
+                                                <span className="text-slate-500">PIN</span>
+                                                <span className="text-white">{eon.pin || "No data decoded"}</span>
+                                            </div>
                                         </div>
-                                        <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-                                            <span className="text-slate-500">PTY</span>
-                                            <span className="text-white">{currentPtyName(eon.pty)} <span className="text-slate-600">[{eon.pty}]</span></span>
-                                        </div>
-                                        <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-                                            <span className="text-slate-500">TP</span>
-                                            <span className={eon.tp ? "text-green-400 font-bold" : "text-slate-600"}>{eon.tp ? "Yes" : "No"}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center border-b border-slate-800 pb-1">
-                                            <span className="text-slate-500">TA</span>
-                                            <span className={eon.ta ? "text-red-400 font-bold" : "text-slate-600"}>{eon.ta ? "Yes" : "No"}</span>
-                                        </div>
-                                        <div className="flex justify-between items-center">
-                                            <span className="text-slate-500">PIN</span>
-                                            <span className="text-white">{eon.pin || "No data decoded"}</span>
-                                        </div>
+                                        {eon.psHistory && eon.psHistory.length > 1 && (
+                                            <div className="flex-1 min-h-[36px] flex items-center justify-end border-t border-slate-800/80 pt-2">
+                                                <button
+                                                    onClick={(e) => {
+                                                        e.stopPropagation();
+                                                        setSelectedEonPi(eon.pi);
+                                                    }}
+                                                    className="px-2.5 py-1 text-[10px] font-bold uppercase rounded border transition-colors bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 hover:text-white flex items-center gap-1.5"
+                                                    title="EON PS HISTORY"
+                                                >
+                                                    <i className="fa-solid fa-clock-rotate-left w-3 h-3 text-slate-400"></i>
+                                                    <span>PS HISTORY</span>
+                                                </button>
+                                            </div>
+                                        )}
                                     </div>
                                 </div>
                             )}
@@ -318,6 +404,87 @@ export const InfoGrid: React.FC<InfoGridProps> = ({ data }) => {
             </div>
         )}
       </div>
+
+      {selectedEonPi && (() => {
+        const activeEon = data.eonData[selectedEonPi];
+        const rawHistory = activeEon?.psHistory || [];
+        const sortedHistory = [...rawHistory];
+        if (eonSortOrder === 'asc') {
+          sortedHistory.reverse();
+        }
+
+        const modalActions = (
+          <button
+            onClick={() => setEonHistoryUnderscores(!eonHistoryUnderscores)}
+            className={`ml-4 px-2 py-1 text-[10px] font-bold rounded border transition-colors uppercase flex items-center gap-1.5 ${eonHistoryUnderscores ? 'bg-blue-900/40 text-blue-400 border-blue-600 hover:bg-yellow-900/60' : 'bg-slate-800 text-slate-400 border-slate-700 hover:text-white hover:bg-slate-700'}`}
+            title="Toggle underscores in EON PS history"
+          >
+            {eonHistoryUnderscores ? (
+              <>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7" /></svg>
+                UNDERSCORES ON
+              </>
+            ) : (
+              <>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+                UNDERSCORES OFF
+              </>
+            )}
+          </button>
+        );
+
+        return (
+          <HistoryViewerWrapper
+            title={`EON PS HISTORY - PI ${selectedEonPi}`}
+            onClose={() => setSelectedEonPi(null)}
+            actions={modalActions}
+            className="max-w-xl"
+          >
+            <table className="w-full text-left text-sm font-mono">
+              <thead>
+                <tr className="border-b border-slate-700 text-slate-500 bg-slate-900 sticky top-0 z-10">
+                  <th className="p-3 w-32">
+                    <div
+                      className="flex items-center gap-1 cursor-pointer hover:text-white select-none transition-colors"
+                      onClick={() => setEonSortOrder(prev => prev === 'desc' ? 'asc' : 'desc')}
+                    >
+                      Time
+                      <svg
+                        className={`w-3 h-3 transition-transform ${eonSortOrder === 'asc' ? 'rotate-180' : ''}`}
+                        fill="none"
+                        stroke="currentColor"
+                        viewBox="0 0 24 24"
+                      >
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 15l7-7 7 7" />
+                      </svg>
+                    </div>
+                  </th>
+                  <th className="p-3">PS</th>
+                </tr>
+              </thead>
+              <tbody>
+                {sortedHistory.map((item, idx) => (
+                  <tr key={idx} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+                    <td className="p-3 text-slate-400 border-r border-slate-800/50">{item.time}</td>
+                    <td className="p-3">
+                      <span className="text-white font-bold tracking-widest whitespace-pre bg-slate-800 px-2 py-1 rounded shadow-sm">
+                        {eonHistoryUnderscores ? (item.ps || "").replace(/ /g, '_') : (item.ps || "")}
+                      </span>
+                    </td>
+                  </tr>
+                ))}
+                {sortedHistory.length === 0 && (
+                  <tr>
+                    <td colSpan={2} className="p-6 text-center text-slate-500 italic">
+                      No EON PS history recorded yet.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </HistoryViewerWrapper>
+        );
+      })()}
 
     </div>
   );

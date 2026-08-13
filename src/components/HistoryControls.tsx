@@ -1,5 +1,6 @@
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { RdsData, PTY_RDS, PTY_RBDS, PTY_COMBINED, PsHistoryItem, RtHistoryItem, BandscanEntry } from '../types';
 import { ECC_COUNTRY_MAP, LIC_LANGUAGE_MAP } from '../constants';
 import { jsPDF } from 'jspdf';
@@ -172,25 +173,25 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
     content += `PS:           ${psFormatted}\n`;
     content += `PTY:          ${ptyName} [${data.pty}]\n\n`;
     const ptynRaw = (data.ptyn || "").replace(/\r/g, '');
-    content += `PTYN:         ${ptynRaw.trim() ? ptynRaw : "N/A"}\n`;
+    content += `PTYN:         ${ptynRaw.trim() ? ptynRaw : "[No Data]"}\n`;
     const lpsRaw = protectRdsControls(data.longPs || "");
-    content += `Long PS:      ${lpsRaw.trim() ? lpsRaw : "N/A"}\n`;
+    content += `Long PS:      ${lpsRaw.trim() ? lpsRaw : "[No Data]"}\n`;
     
     const piFirstVal = data.pi && data.pi.length >= 1 ? data.pi.charAt(0).toUpperCase() : null;
     const eccCountryVal = (data.ecc && piFirstVal && ECC_COUNTRY_MAP[data.ecc.toUpperCase()]?.[piFirstVal]) || null;
     const licLangVal = (data.lic && LIC_LANGUAGE_MAP[data.lic.toUpperCase()]) || null;
     
-    content += `ECC:          ${data.ecc || "N/A"}${eccCountryVal ? ` (${eccCountryVal})` : ""}\n`;
-    content += `LIC:          ${data.lic || "N/A"}${licLangVal ? ` (${licLangVal})` : ""}\n\n`;
+    content += `ECC:          ${data.ecc || "--"}${eccCountryVal ? ` (${eccCountryVal})` : ""}\n`;
+    content += `LIC:          ${data.lic || "--"}${licLangVal ? ` (${licLangVal})` : ""}\n\n`;
 
     // 2. Flags, decoder identification, clock time and PIN
     content += `[2] FLAGS / DECODER IDENTIFICATION (DI) / CLOCK TIME (CT) / PIN\n`;
     content += `---------------------------------------------------------------\n`;
     content += `Flags:        TP = ${data.tp ? '1' : '0'} | TA = ${data.ta ? '1' : '0'} | MS = ${data.ms ? 'Music' : 'Speech'}\n`;
     content += `DI:           Stereo = ${data.stereo ? '1' : '0'} | Artificial Head = ${data.artificialHead ? '1' : '0'} | Compressed = ${data.compressed ? '1' : '0'} | Dynamic PTY = ${data.dynamicPty ? '1' : '0'}\n`;
-    content += `Local Time:   ${data.localTime || "N/A"}\n`;
-    content += `UTC Time:     ${data.utcTime || "N/A"}\n`;
-    content += `PIN:          ${data.pin || "N/A"}\n\n`;
+    content += `Local Time:   ${data.localTime || "[No Data]"}\n`;
+    content += `UTC Time:     ${data.utcTime || "[No Data]"}\n`;
+    content += `PIN:          ${data.pin || "[No Data]"}\n\n`;
 
     // 3. Radiotext
     content += `[3] RADIOTEXT\n`;
@@ -540,6 +541,7 @@ export const HistoryControls: React.FC<HistoryControlsProps> = ({ data, onSetRec
             </button>
             <button 
                 onClick={handleToggleRecording}
+                title="When using this function, make sure to stay on each RDS for at least 3 seconds to ensure that the transmitter information is retrieved correctly."
                 className={`px-3 py-1.5 md:px-4 md:py-2 text-[10px] md:text-xs font-bold uppercase rounded border transition-all flex items-center justify-center gap-2 whitespace-nowrap ${data.isRecording ? 'bg-red-600 text-white border-red-500 animate-pulse' : 'bg-red-900/30 text-red-400 border-red-500/50 hover:bg-red-500/40 hover:text-white'}`}
             >
                 <i className={`fa-solid ${data.isRecording ? 'fa-stop' : 'fa-circle'} text-[10px]`}></i>
@@ -939,10 +941,10 @@ export const HistoryViewer = <T extends any>({ title, data, onClose, renderHeade
     );
 };
 
-export const HistoryViewerWrapper: React.FC<{ title: string, onClose: () => void, children: React.ReactNode, actions?: React.ReactNode, scrollContainerRef?: React.RefObject<HTMLDivElement> }> = ({ title, onClose, children, actions, scrollContainerRef }) => {
-    return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
-            <div className="bg-slate-950 border border-slate-700 rounded-lg shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col overflow-hidden">
+export const HistoryViewerWrapper: React.FC<{ title: string, onClose: () => void, children: React.ReactNode, actions?: React.ReactNode, scrollContainerRef?: React.RefObject<HTMLDivElement>, className?: string }> = ({ title, onClose, children, actions, scrollContainerRef, className }) => {
+    return createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
+            <div className={`bg-slate-950 border border-slate-700 rounded-lg shadow-2xl w-full max-h-[85vh] flex flex-col overflow-hidden ${className || 'max-w-4xl'}`}>
                 <div className="flex justify-between items-center p-3 border-b border-slate-800 bg-slate-900">
                     <div className="flex items-center">
                         <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
@@ -962,12 +964,77 @@ export const HistoryViewerWrapper: React.FC<{ title: string, onClose: () => void
                     <button onClick={onClose} className="px-4 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-bold rounded transition-colors uppercase border border-slate-700 shadow-sm">Close</button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 
 const ExportModal: React.FC<{ title: string, content: string, pi: string, onClose: () => void, bandscanEntries?: BandscanEntry[], formatFreq?: (f: string) => string, serverName?: string }> = ({ title, content, pi, onClose, bandscanEntries, formatFreq, serverName }) => {
     const [copyStatus, setCopyStatus] = useState<'IDLE' | 'COPIED'>('IDLE');
+    
+    
+    const [excludedEntries, setExcludedEntries] = useState<Set<BandscanEntry>>(new Set());
+
+    const [sortByFreq, setSortByFreq] = useState(false);
+
+    
+    const displayedEntries = useMemo(() => {
+        let entries = (bandscanEntries || []).filter(e => !excludedEntries.has(e));
+        if (sortByFreq) {
+            entries.sort((a, b) => {
+                const freqA = parseFloat(a.freq);
+                const freqB = parseFloat(b.freq);
+                return (isNaN(freqA) ? 0 : freqA) - (isNaN(freqB) ? 0 : freqB);
+            });
+        }
+        return entries;
+    }, [bandscanEntries, sortByFreq, excludedEntries]);
+
+    const allSortedEntries = useMemo(() => {
+        let entries = [...(bandscanEntries || [])];
+        if (sortByFreq) {
+            entries.sort((a, b) => {
+                const freqA = parseFloat(a.freq);
+                const freqB = parseFloat(b.freq);
+                return (isNaN(freqA) ? 0 : freqA) - (isNaN(freqB) ? 0 : freqB);
+            });
+        }
+        return entries;
+    }, [bandscanEntries, sortByFreq]);
+
+
+    const rawContent = useMemo(() => {
+        if (!bandscanEntries || bandscanEntries.length <= 1) return content;
+        
+        const nowObj = new Date();
+        const now = `${nowObj.toLocaleDateString('fr-FR')} at ${nowObj.toLocaleTimeString('fr-FR')}`;
+        let r = `RDSExpert - Bandscan Export\n`;
+        if (serverName) r += `Server: ${serverName}\n`;
+        r += `Generated on: ${now}\n`;
+        r += `==================================================\n\n`;
+
+        r += `[BANDSCAN SUMMARY]\n`;
+        r += `------------------\n`;
+        displayedEntries.forEach(entry => {
+            const f = formatFreq ? formatFreq(entry.freq) : entry.freq;
+            const piVal = entry.pi;
+            const psVal = entry.ps.replace(/ /g, '_');
+            const sig = entry.signal.toFixed(1);
+            const st = entry.stationName || "Unknown";
+            const city = (entry.city || "[Unknown]").split(' | ')[0];
+            r += `${f} MHz -> PI: ${piVal} | PS: ${psVal} | ${sig} dBf -> ${st} - ${city}\n`;
+        });
+        r += `\n`;
+
+        r += `[DETAILED REPORTS]\n`;
+        r += `------------------\n`;
+        displayedEntries.forEach(entry => {
+            r += entry.rdsReport;
+            r += `\n==================================================\n\n`;
+        });
+        return r;
+    }, [bandscanEntries, content, displayedEntries, serverName, formatFreq]);
+
     
     // States for optional history inclusion
     const [includeHistory, setIncludeHistory] = useState(() => localStorage.getItem('rds_export_history') === 'true');
@@ -1019,7 +1086,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         return filtered.trim();
     };
 
-    const displayContent = useMemo(() => getFilteredReport(content), [content, includeGroupsSequence, includeHistory, signalUnit]);
+    const displayContent = useMemo(() => getFilteredReport(rawContent), [rawContent, includeGroupsSequence, includeHistory, signalUnit]);
 
     const handleCopy = () => {
         navigator.clipboard.writeText(displayContent).then(() => {
@@ -1033,7 +1100,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         const dateStr = now.toLocaleDateString('fr-FR').replace(/\//g, '-'); // DD-MM-YYYY
         const timeStr = now.toLocaleTimeString('fr-FR', { hour12: false }).replace(/:/g, '-'); // HH-MM-SS
         const piSafe = pi.trim() || "XXXX";
-        const isBandscan = bandscanEntries && bandscanEntries.length > 1;
+        const isBandscan = displayedEntries && displayedEntries.length > 1;
         const filename = isBandscan 
             ? `RDSExpert Bandscan - ${dateStr} - ${timeStr}.txt`
             : `RDSExpert Data Export - ${piSafe} - ${dateStr} - ${timeStr}.txt`;
@@ -1129,13 +1196,13 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         };
         
         // --- PAGE 1: INDEX (Only if multi-station) ---
-        const isBandscan = bandscanEntries.length > 1;
+        const isBandscan = displayedEntries.length > 1;
 
         // Correctly calculate the summary pages count based on dynamic heights
         let summaryPagesCount = 1;
         if (isBandscan) {
             let checkY = 78;
-            bandscanEntries.forEach((entry) => {
+            displayedEntries.forEach((entry) => {
                 const cityShort = entry.city.split(' | ')[0];
                 const infoText = `${entry.stationName} - ${cityShort}`;
                 const wrappedInfo = doc.splitTextToSize(infoText, 60);
@@ -1210,7 +1277,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
 
             // Logic setup for dynamic summary heights
             let yPos = 78;
-            bandscanEntries.forEach((entry, index) => {
+            displayedEntries.forEach((entry, index) => {
                 const cityShort = entry.city.split(' | ')[0];
                 const infoText = `${entry.stationName} - ${cityShort}`;
                 const wrappedInfo = doc.splitTextToSize(infoText, 60);
@@ -1385,7 +1452,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         }
         
         // --- DETAILS PAGES ---
-        bandscanEntries.forEach((entry, idx) => {
+        displayedEntries.forEach((entry, idx) => {
             if (isBandscan || idx > 0) doc.addPage();
             stationStartPages[idx] = doc.getNumberOfPages();
             
@@ -1710,8 +1777,17 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                         doc.setFont("helvetica", "bold");
                         doc.setTextColor(71, 85, 105); 
                         doc.text(label, 15, detailY);
-                        doc.setFont("helvetica", "normal");
-                        doc.setTextColor(0, 0, 0);
+                        
+                        const isItalicNoData = (label === "PTYN:" || label === "Long PS:" || label === "Local Time:" || label === "UTC Time:" || label === "PIN:") && value === "[No Data]";
+                        const isGreyNoData = isItalicNoData || ((label === "ECC:" || label === "LIC:") && value === "--");
+                        
+                        if (isGreyNoData) {
+                            doc.setFont("helvetica", isItalicNoData ? "italic" : "normal");
+                            doc.setTextColor(100, 116, 139);
+                        } else {
+                            doc.setFont("helvetica", "normal");
+                            doc.setTextColor(0, 0, 0);
+                        }
                         
                         const valueX = 45; 
                         const maxWidth = 195 - valueX;
@@ -1734,6 +1810,9 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                                 } else if (isOne) {
                                     doc.setFont("helvetica", "bold");
                                     doc.setTextColor(0, 0, 0);
+                                } else if (isItalicNoData) {
+                                    doc.setFont("helvetica", "italic");
+                                    doc.setTextColor(100, 116, 139);
                                 } else {
                                     doc.setFont("helvetica", "normal");
                                     doc.setTextColor(0, 0, 0);
@@ -1751,7 +1830,11 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                                 }
                             });
                         } else if (sectionTitle.includes('[3]') || label === "Long PS:") {
-                            detailY = drawTextWithCodes(value, valueX, detailY, 9, 195);
+                            if (isItalicNoData) {
+                                doc.text(value, valueX, detailY);
+                            } else {
+                                detailY = drawTextWithCodes(value, valueX, detailY, 9, 195);
+                            }
                         } else {
                             const wrappedValue = doc.splitTextToSize(value, maxWidth);
                             wrappedValue.forEach((vLine: string, vIdx: number) => {
@@ -1800,7 +1883,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
             let currentSummaryPage = 1;
             doc.setPage(1);
             let yLink = 78;
-            bandscanEntries.forEach((entry, index) => {
+            displayedEntries.forEach((entry, index) => {
                 const cityShort = entry.city.split(' | ')[0];
                 const infoText = `${entry.stationName} - ${cityShort}`;
                 const wrappedInfo = doc.splitTextToSize(infoText, 60);
@@ -1821,7 +1904,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
 
         // --- NAVIGATION LINKS BETWEEN STATIONS ---
         if (isBandscan) {
-            bandscanEntries.forEach((_, index) => {
+            displayedEntries.forEach((_, index) => {
                 doc.setPage(stationStartPages[index]);
                 doc.setTextColor(37, 99, 235);
                 doc.setFontSize(7);
@@ -1833,14 +1916,14 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                 const nextWidth = doc.getTextWidth(nextLabel);
                 const prevWidth = doc.getTextWidth(prevLabel);
 
-                if (index < bandscanEntries.length - 1) {
+                if (index < displayedEntries.length - 1) {
                     const nextX = 195 - nextWidth;
                     doc.text(nextLabel, nextX, 16);
                     doc.link(nextX, 13, nextWidth, 5, { pageNumber: stationStartPages[index + 1] });
                 }
                 
                 if (index > 0) {
-                    const nextPartWidth = (index < bandscanEntries.length - 1) ? (nextWidth + spacing) : 0;
+                    const nextPartWidth = (index < displayedEntries.length - 1) ? (nextWidth + spacing) : 0;
                     const prevX = 195 - nextPartWidth - prevWidth;
                     doc.text(prevLabel, prevX, 16);
                     doc.link(prevX, 13, prevWidth, 5, { pageNumber: stationStartPages[index - 1] });
@@ -1855,8 +1938,8 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
         doc.save(filename);
     };
 
-    return (
-        <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
+    return createPortal(
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
             <div className="bg-slate-950 border border-slate-700 rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden">
                 <div className="flex justify-between items-center p-3 border-b border-slate-800 bg-slate-900">
                     <h3 className="text-sm font-bold text-slate-200 uppercase tracking-wider flex items-center gap-2">
@@ -1868,7 +1951,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                     </button>
                 </div>
                 
-                <div className="bg-slate-900/50 p-3 border-b border-slate-800 flex flex-row items-center justify-center gap-4 whitespace-nowrap overflow-x-auto no-scrollbar">
+                <div className="bg-slate-900/50 p-3 border-b border-slate-800 flex flex-wrap items-center justify-center gap-4">
                     <label className="flex items-center gap-2 cursor-pointer group shrink-0">
                         <input 
                             type="checkbox" 
@@ -1897,6 +1980,9 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                         <span className="text-[10px] font-bold text-slate-500 group-hover:text-slate-300 transition-colors uppercase tracking-tight">Include PS / PTY / RT History</span>
                     </label>
 
+                    
+                    
+
                     <div className="w-px h-4 bg-slate-800 shrink-0 self-center" />
 
                     <div className="flex items-center gap-2 shrink-0">
@@ -1914,13 +2000,64 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                     </div>
                 </div>
 
-                <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950 p-4">
-                    <textarea 
-                        readOnly 
-                        value={displayContent} 
-                        className="w-full h-96 bg-slate-900 border border-slate-700 text-slate-300 font-mono text-xs p-3 rounded focus:outline-none resize-none"
-                    />
+                
+                <div className="flex-1 flex overflow-hidden">
+                    {displayedEntries && bandscanEntries && bandscanEntries.length > 1 && (
+                        
+                        <div className="w-1/3 border-r border-slate-800 bg-slate-900 flex flex-col p-2 gap-1 overflow-hidden">
+                            <div className="text-[10px] font-bold text-slate-500 mb-2 px-1 uppercase tracking-wider flex justify-between items-center shrink-0">
+                                <span>Stations ({displayedEntries.length})</span>
+                                <button 
+                                    onClick={() => setSortByFreq(!sortByFreq)}
+                                    className={`px-1.5 py-0.5 rounded border transition-colors flex items-center gap-1 ${sortByFreq ? 'bg-blue-900/30 border-blue-500/50 text-blue-400' : 'bg-slate-950 border-slate-700 text-slate-400 hover:text-slate-300 hover:bg-slate-800'}`}
+                                    title="Toggle Sort by frequency"
+                                >
+                                    <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4h13M3 8h9m-9 4h6m4 0l4-4m0 0l4 4m-4-4v12" /></svg>
+                                    SORT BY FREQUENCY
+                                </button>
+                            </div>
+                            <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col gap-1 pr-1">
+                            {allSortedEntries.map((entry, idx) => {
+                                const isExcluded = excludedEntries.has(entry);
+                                return (
+                                <div key={idx} className={`flex justify-between items-center p-2 rounded bg-slate-950 border ${isExcluded ? 'border-slate-800 opacity-50' : 'border-slate-700'}`}>
+                                    <div className="flex flex-col overflow-hidden">
+                                        <div className={`font-bold text-xs truncate ${isExcluded ? 'text-slate-500' : 'text-slate-200'}`}>{formatFreq ? formatFreq(entry.freq) : entry.freq} MHz - {entry.stationName}</div>
+                                        <div className="text-slate-500 text-[10px] font-mono">PI: {entry.pi} | {entry.signal.toFixed(1)} dBf</div>
+                                    </div>
+                                    <button onClick={() => {
+                                        setExcludedEntries(prev => {
+                                            const newSet = new Set(prev);
+                                            if (newSet.has(entry)) {
+                                                newSet.delete(entry);
+                                            } else {
+                                                newSet.add(entry);
+                                            }
+                                            return newSet;
+                                        });
+                                    }} className={`p-1 rounded ml-2 transition-colors ${isExcluded ? 'text-slate-500 hover:text-slate-300 hover:bg-slate-800' : 'text-blue-500 hover:text-blue-400 hover:bg-slate-800'}`}>
+                                        {isExcluded ? (
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13.875 18.825A10.05 10.05 0 0112 19c-4.478 0-8.268-2.943-9.543-7a9.97 9.97 0 011.563-3.029m5.858.908a3 3 0 114.243 4.243M9.878 9.878l4.242 4.242M9.88 9.88l-3.29-3.29m7.532 7.532l3.29 3.29M3 3l3.59 3.59m0 0A9.953 9.953 0 0112 5c4.478 0 8.268 2.943 9.543 7a10.025 10.025 0 01-4.132 5.411m0 0L21 21" /></svg>
+                                        ) : (
+                                            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M2.458 12C3.732 7.943 7.523 5 12 5c4.478 0 8.268 2.943 9.542 7-1.274 4.057-5.064 7-9.542 7-4.477 0-8.268-2.943-9.542-7z" /></svg>
+                                        )}
+                                    </button>
+                                </div>
+                                );
+                            })}
+                            </div>
+                        </div>
+
+                    )}
+                    <div className="flex-1 overflow-y-auto custom-scrollbar bg-slate-950 p-4">
+                        <textarea 
+                            readOnly 
+                            value={displayContent} 
+                            className="w-full h-96 bg-slate-900 border border-slate-700 text-slate-300 font-mono text-xs p-3 rounded focus:outline-none resize-none"
+                        />
+                    </div>
                 </div>
+
                 <div className="p-3 bg-slate-900 border-t border-slate-800 flex justify-end gap-3">
                      <button 
                         onClick={handleCopy}
@@ -1939,7 +2076,7 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                         )}
                     </button>
 
-                    {bandscanEntries && (
+                    {displayedEntries && (
                         <button 
                             onClick={handleDownloadPDF}
                             className="px-4 py-1.5 bg-red-600 hover:bg-red-500 text-white text-xs font-bold rounded transition-colors uppercase border border-red-500 shadow-sm flex items-center gap-2"
@@ -1962,12 +2099,13 @@ const ExportModal: React.FC<{ title: string, content: string, pi: string, onClos
                     </button>
                 </div>
             </div>
-        </div>
+        </div>,
+        document.body
     );
 };
 
-const ApiErrorModal: React.FC<{ code: string; onClose: () => void }> = ({ code, onClose }) => (
-  <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
+const ApiErrorModal: React.FC<{ code: string; onClose: () => void }> = ({ code, onClose }) => createPortal(
+  <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
     <div className="bg-slate-900 border-2 border-red-500/50 rounded-lg shadow-2xl w-full max-w-sm flex flex-col overflow-hidden relative text-center">
       <div className="p-6 space-y-4">
         <div className="w-12 h-12 bg-red-900/20 rounded-full flex items-center justify-center mx-auto border border-red-500/30">
@@ -1992,5 +2130,6 @@ const ApiErrorModal: React.FC<{ code: string; onClose: () => void }> = ({ code, 
         </button>
       </div>
     </div>
-  </div>
+  </div>,
+  document.body
 );

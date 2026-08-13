@@ -1,4 +1,5 @@
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   RdsData, 
   ConnectionStatus, 
@@ -16,8 +17,11 @@ import {
   IhHistoryItem,
   RpHistoryItem,
   ErtHistoryItem,
+  TaHistoryItem,
+  EonTaHistoryItem,
   LogEntry,
-  BandscanEntry
+  BandscanEntry,
+  EonTaInfo
 } from './types';
 import { 
   INITIAL_RDS_DATA, 
@@ -45,7 +49,9 @@ interface DecoderState {
   psBuffer: string[];
   psMask: boolean[];
   lpsBuffer: string[];
+  lpsMask: boolean[];
   ptynBuffer: string[];
+  ptynMask: boolean[];
   rtBuffer0: string[];
   rtBuffer1: string[];
   
@@ -56,6 +62,7 @@ interface DecoderState {
   // RT Stability
   rtCandidateString: string;
   rtStableSince: number;
+  rtIs2B: boolean;
 
   afSet: string[];
   afMethodAG3s: Set<number>;
@@ -79,6 +86,8 @@ interface DecoderState {
   ptynAbFlag: boolean;
   tp: boolean;
   ta: boolean;
+  taInitialized?: boolean;
+  eonTaInitialized?: boolean;
   ms: boolean;
   diStereo: boolean;
   diArtificialHead: boolean;
@@ -119,6 +128,7 @@ interface DecoderState {
   hasEws: boolean;
   ewsId: string;
   eonMap: Map<string, EonNetwork>; 
+  eonTaInfo: EonTaInfo | undefined;
   tmcServiceInfo: TmcServiceInfo;
   tmcBuffer: TmcMessage[]; 
   tmcProviderBuffer: string[];
@@ -147,8 +157,11 @@ interface DecoderState {
 
   // Raw Playback
   isPlayingRaw: boolean;
+  isRawSource: boolean;
   rawPlaybackCurrent: number;
   rawPlaybackTotal: number;
+  tmcActiveMultiGroup: Record<number, number>;
+  lastTmcMessageId: number | null;
   
   // Analyzer State
   groupCounts: Record<string, number>;
@@ -169,12 +182,17 @@ interface DecoderState {
   psCandidateString: string;
   psStableSince: number;
   psValidationBuffer: string;
+  psConsecutiveBuffer: string[];
+  nextExpectedAddress: number;
   ptynCandidateString: string;
   ptynStableSince: number;
   ptynValidationBuffer: string;
   
   psHistoryBuffer: PsHistoryItem[];
   rtHistoryBuffer: RtHistoryItem[];
+  taHistoryBuffer: TaHistoryItem[];
+  eonTaHistoryBuffer: EonTaHistoryItem[];
+  lastTimeString?: string;
 
   // Bandscan
   isRecording: boolean;
@@ -488,26 +506,66 @@ const pad = (n: number) => {
   return n.toString().padStart(2, '0');
 };
 
-const getDurationLabel = (code: number): { label: string, minutes: number } => {
-  switch(code) {
-    case 0: 
-      return { label: "No duration", minutes: 0 };
-    case 1: 
-      return { label: "15 minutes", minutes: 15 };
-    case 2: 
-      return { label: "30 minutes", minutes: 30 };
-    case 3: 
-      return { label: "1 hour", minutes: 60 };
-    case 4: 
-      return { label: "2 hours", minutes: 120 };
-    case 5: 
-      return { label: "3 hours", minutes: 180 };
-    case 6: 
-      return { label: "4 hours", minutes: 240 };
-    case 7: 
-      return { label: "Longer Lasting", minutes: 0 };
-    default: 
-      return { label: "Unknown", minutes: 0 };
+const getDurationType = (code: number): "Dynamic" | "Longer Lasting" | "Forecast" => {
+    const text = (TMC_EVENT_MAP[code] || "").toLowerCase();
+
+    // ISO 14819-2 Forecast events (F) typically involve future predictions
+    if (text.includes("expected")) return "Forecast";
+
+    // Dynamic (D) overriding Longer Lasting - Short-term, changing, or unpredictable events
+    const dynamicKeywords = [
+        "temporary", "changed", "cleared", "lifted", "restored", "intermittently", "rescue", "clearance",
+        "maintenance", "road marking", "layout", "accident", "incident", "hazard", "fire", "leak", "collapse",
+        "burst", "avalanche", "flooding", "rockfall", "landslip", "subsidence", "smog", "winds", "ice", "security",
+        "strike", "demonstration", "alert", "visibility", "slippery", "spillage"
+    ];
+    for (const kw of dynamicKeywords) {
+        if (text.includes(kw)) return "Dynamic";
+    }
+
+    // Longer Lasting (L) - Planned, structural, or significant long-term configurations
+    const longerLastingKeywords = [
+        "closed", "closure", "restriction", "contraflow", "alternate line", "roadworks", "carpool",
+        "sports", "fair", "parade", "event" // Public events are often treated as longer lasting configurations
+    ];
+    for (const kw of longerLastingKeywords) {
+        if (text.includes(kw) && !text.includes("ahead")) {
+            return "Longer Lasting";
+        }
+    }
+
+    // Default to Dynamic (D) for standard traffic flows, delays, queues, etc.
+    return "Dynamic";
+};
+
+const getDurationLabel = (code: number, eventCode: number): { label: string, minutes: number, isLongerLasting: boolean, days: number, durationType: string } => {
+  const durationType = getDurationType(eventCode);
+  const longerLasting = durationType === "Longer Lasting" || durationType === "Forecast";
+  
+  if (longerLasting) {
+     switch(code) {
+        case 0: return { label: "No duration", minutes: 0, isLongerLasting: true, days: 0, durationType };
+        case 1: return { label: "Rest of day", minutes: 0, isLongerLasting: true, days: 0, durationType };
+        case 2: return { label: "1 day", minutes: 0, isLongerLasting: true, days: 1, durationType };
+        case 3: return { label: "2 days", minutes: 0, isLongerLasting: true, days: 2, durationType };
+        case 4: return { label: "3 days", minutes: 0, isLongerLasting: true, days: 3, durationType };
+        case 5: return { label: "4 days", minutes: 0, isLongerLasting: true, days: 4, durationType };
+        case 6: return { label: "5 days", minutes: 0, isLongerLasting: true, days: 5, durationType };
+        case 7: return { label: "6 days", minutes: 0, isLongerLasting: true, days: 6, durationType };
+        default: return { label: "Unknown", minutes: 0, isLongerLasting: true, days: 0, durationType };
+     }
+  } else {
+     switch(code) {
+        case 0: return { label: "No duration", minutes: 0, isLongerLasting: false, days: 0, durationType };
+        case 1: return { label: "15 minutes", minutes: 15, isLongerLasting: false, days: 0, durationType };
+        case 2: return { label: "30 minutes", minutes: 30, isLongerLasting: false, days: 0, durationType };
+        case 3: return { label: "1 hour", minutes: 60, isLongerLasting: false, days: 0, durationType };
+        case 4: return { label: "2 hours", minutes: 120, isLongerLasting: false, days: 0, durationType };
+        case 5: return { label: "3 hours", minutes: 180, isLongerLasting: false, days: 0, durationType };
+        case 6: return { label: "4 hours", minutes: 240, isLongerLasting: false, days: 0, durationType };
+        case 7: return { label: "Rest of day", minutes: 0, isLongerLasting: false, days: 0, durationType };
+        default: return { label: "Unknown", minutes: 0, isLongerLasting: false, days: 0, durationType };
+     }
   }
 };
 
@@ -528,10 +586,11 @@ const getEventNature = (code: number): string => {
 
 // Determining the emergency level of the TMC events
 const getEventUrgency = (code: number): string => {
-  if (code >= 900 && code <= 1000) return "High Priority";
-  if (code >= 200 && code <= 250) return "High Priority";
-  if (code >= 401 && code <= 410) return "High Priority";
-  if (code === 2) return "High Priority"; // Stationary traffic danger
+  if (code >= 1 && code <= 99) return "Urgent";
+  if (code >= 200 && code <= 250) return "Urgent";
+  if (code >= 401 && code <= 410) return "Urgent";
+  if (code >= 900 && code <= 1000) return "Urgent";
+  if (code >= 1600 && code <= 1650) return "Urgent";
   return "Normal";
 };
 
@@ -561,6 +620,42 @@ const convertMjd = (mjd: number): { day: number, month: number, year: number } |
   };
 };
 
+const calculateTimeDiff = (start: string, end?: string): string => {
+  if (!end) return "...";
+  
+  // start/end format: "DD/MM/YYYY HH:MM:SS"
+  const extractTime = (str: string) => str.includes(' ') ? str.split(' ')[1] : str;
+  const startTimeStr = extractTime(start);
+  const endTimeStr = extractTime(end);
+  
+  const [sh, sm, ss] = startTimeStr.split(':').map(Number);
+  const [eh, em, es] = endTimeStr.split(':').map(Number);
+  
+  if (isNaN(sh) || isNaN(eh)) return "...";
+
+  let startSecs = sh * 3600 + (sm || 0) * 60 + (ss || 0);
+  let endSecs = eh * 3600 + (em || 0) * 60 + (es || 0);
+  
+  // If the time rolled over to the next day, add 24 hours
+  if (endSecs < startSecs) endSecs += 24 * 3600;
+  
+  const diff = endSecs - startSecs;
+  const h = Math.floor(diff / 3600);
+  const m = Math.floor((diff % 3600) / 60);
+  const s = diff % 60;
+  
+  if (h > 0) return `${h}h ${m}m ${s}s`;
+  if (m > 0) return `${m}m ${s}s`;
+  return `${s}s`;
+};
+
+const getCurrentDateTime = (state: DecoderState): string => {
+  const d = new Date();
+  const dateStr = d.toLocaleDateString();
+  const timeStr = state.lastTimeString || d.toLocaleTimeString();
+  return `${dateStr} ${timeStr}`;
+};
+
 const getRawTimestamp = (): string => {
   const pad = (n: number) => n.toString().padStart(2, '0');
   const now = new Date();
@@ -583,12 +678,22 @@ const App: React.FC = () => {
   const [droppedFile, setDroppedFile] = useState<File | null>(null);
   const [isDraggingOverRaw, setIsDraggingOverRaw] = useState<boolean>(false);
   const rawPlaybackModeRef = useRef<'normal' | 'instant'>('normal');
+  const [rawPlaybackSpeed, setRawPlaybackSpeed] = useState<number>(() => {
+    const saved = localStorage.getItem('rdsExpertPlaybackSpeed');
+    return saved ? parseFloat(saved) : 1;
+  });
+  const [rawPlaybackLoop, setRawPlaybackLoop] = useState<boolean>(false);
+  const [showSpeedMenu, setShowSpeedMenu] = useState<boolean>(false);
+  const rawPlaybackSpeedRef = useRef<number>(rawPlaybackSpeed);
+  const rawPlaybackLoopRef = useRef<boolean>(false);
   const [analyzerActive, setAnalyzerActive] = useState<boolean>(false);
   const analyzerActiveRef = useRef<boolean>(false);
   const [tmcActive, setTmcActive] = useState<boolean>(false);
   const tmcActiveRef = useRef<boolean>(false);
   const [tmcPaused, setTmcPaused] = useState<boolean>(false);
   const [showTdcHistory, setShowTdcHistory] = useState<boolean>(false);
+  const [showTaHistory, setShowTaHistory] = useState<boolean>(false);
+  const [showEonTaHistory, setShowEonTaHistory] = useState<boolean>(false);
   const [showIhHistory, setShowIhHistory] = useState<boolean>(false);
   const [showRpHistory, setShowRpHistory] = useState<boolean>(false);
   const [showErtHistory, setShowErtHistory] = useState<boolean>(false);
@@ -611,13 +716,16 @@ const App: React.FC = () => {
     psBuffer: new Array(8).fill('-'),  
     psMask: new Array(8).fill(false),
     lpsBuffer: new Array(32).fill(' '), 
+    lpsMask: new Array(32).fill(false),
     ptynBuffer: new Array(8).fill(' '), 
+    ptynMask: new Array(8).fill(false),
     rtBuffer0: new Array(64).fill(' '), 
     rtBuffer1: new Array(64).fill(' '), 
     rtMask0: new Array(64).fill(false),
     rtMask1: new Array(64).fill(false),
     rtCandidateString: "",
     rtStableSince: 0,
+    rtIs2B: false,
 
     afSet: [], 
     afMethodAG3s: new Set<number>(),
@@ -671,11 +779,12 @@ const App: React.FC = () => {
     hasEws: false,
     ewsId: "",
     eonMap: new Map<string, EonNetwork>(), 
+    eonTaInfo: undefined,
     tmcServiceInfo: { 
       ltn: 0, 
       sid: 0, 
-      afi: false, 
-      mode: 0, 
+      
+      
       providerName: "[Identifying...]" 
     },
     tmcBuffer: [], 
@@ -705,8 +814,11 @@ const App: React.FC = () => {
 
     // Raw Playback
     isPlayingRaw: false,
+    isRawSource: false,
     rawPlaybackCurrent: 0,
     rawPlaybackTotal: 0,
+    tmcActiveMultiGroup: {},
+    lastTmcMessageId: null,
     
     // Analyzer State
     groupCounts: {},
@@ -727,12 +839,16 @@ const App: React.FC = () => {
     psCandidateString: "        ",
     psStableSince: 0,
     psValidationBuffer: "        ",
+    psConsecutiveBuffer: new Array(8).fill(' '),
+    nextExpectedAddress: 0,
     ptynCandidateString: "        ",
     ptynStableSince: 0,
     ptynValidationBuffer: "        ",
     
     psHistoryBuffer: [],
     rtHistoryBuffer: [],
+    taHistoryBuffer: [],
+    eonTaHistoryBuffer: [],
 
     // Bandscan
     isRecording: false,
@@ -839,29 +955,29 @@ const App: React.FC = () => {
     content += `PTY:          ${ptyName} [${state.pty}]\n\n`;
     const protectRdsControls = (t: string) => t.replace(/\n/g, '\uE00A').replace(/\r/g, '\uE00D');
     const ptynRaw = protectRdsControls(renderRdsBuffer(state.ptynBuffer));
-    content += `PTYN:         ${ptynRaw.trim() ? ptynRaw : "N/A"}\n`;
+    content += `PTYN:         ${ptynRaw.trim() ? ptynRaw : "[No Data]"}\n`;
     const lpsRaw = protectRdsControls(renderRdsBuffer(state.lpsBuffer));
-    content += `Long PS:      ${lpsRaw.trim() ? lpsRaw : "N/A"}\n`;
+    content += `Long PS:      ${lpsRaw.trim() ? lpsRaw : "[No Data]"}\n`;
     
     const piFirstVal = state.currentPi && state.currentPi.length >= 1 ? state.currentPi.charAt(0).toUpperCase() : null;
     const eccCountryVal = (state.ecc && piFirstVal && ECC_COUNTRY_MAP[state.ecc.toUpperCase()]?.[piFirstVal]) || null;
     const licLangVal = (state.lic && LIC_LANGUAGE_MAP[state.lic.toUpperCase()]) || null;
     
-    content += `ECC:          ${state.ecc || "N/A"}${eccCountryVal ? ` (${eccCountryVal})` : ""}\n`;
-    content += `LIC:          ${state.lic || "N/A"}${licLangVal ? ` (${licLangVal})` : ""}\n\n`;
+    content += `ECC:          ${state.ecc || "--"}${eccCountryVal ? ` (${eccCountryVal})` : ""}\n`;
+    content += `LIC:          ${state.lic || "--"}${licLangVal ? ` (${licLangVal})` : ""}\n\n`;
 
     content += `[2] FLAGS / DECODER IDENTIFICATION (DI) / CLOCK TIME (CT) / PIN\n`;
     content += `---------------------------------------------------------------\n`;
     content += `Flags:        TP = ${state.tp ? '1' : '0'} | TA = ${state.ta ? '1' : '0'} | MS = ${state.ms ? 'Music' : 'Speech'}\n`;
     content += `DI:           Stereo = ${state.diStereo ? '1' : '0'} | Artificial Head = ${state.diArtificialHead ? '1' : '0'} | Compressed = ${state.diCompressed ? '1' : '0'} | Dynamic PTY = ${state.diDynamicPty ? '1' : '0'}\n`;
-    content += `Local Time:   ${state.localTime || "N/A"}\n`;
-    content += `UTC Time:     ${state.utcTime || "N/A"}\n`;
-    content += `PIN:          ${state.pin || "N/A"}\n\n`;
+    content += `Local Time:   ${state.localTime || "[No Data]"}\n`;
+    content += `UTC Time:     ${state.utcTime || "[No Data]"}\n`;
+    content += `PIN:          ${state.pin || "[No Data]"}\n\n`;
 
     content += `[3] RADIOTEXT\n`;
     content += `-------------\n`;
-    const rtARaw = protectRdsControls(renderRdsBuffer(state.rtBuffer0, false, true));
-    const rtBRaw = protectRdsControls(renderRdsBuffer(state.rtBuffer1, false, true));
+    const rtARaw = protectRdsControls(renderRdsBuffer(state.rtIs2B ? state.rtBuffer0.slice(0, 32) : state.rtBuffer0, false, true));
+    const rtBRaw = protectRdsControls(renderRdsBuffer(state.rtIs2B ? state.rtBuffer1.slice(0, 32) : state.rtBuffer1, false, true));
     const isRtActive = (state.groupCounts['2A'] || 0) > 0 || (state.groupCounts['2B'] || 0) > 0;
 
     if (!isRtActive) {
@@ -1047,7 +1163,6 @@ const App: React.FC = () => {
     const state = decoderState.current;
     const psRaw = renderRdsBuffer(state.psBuffer, false, false, true).trim();
     // Archive forced: Archive if PI is valid OR if PS has some content (RDS decoded at screen)
-    if (state.currentPi === "----" && (psRaw.length === 0 || psRaw === "--------")) return;
 
     const rdsText = generateReportForBandscanSnapshot(state);
 
@@ -1085,7 +1200,6 @@ const App: React.FC = () => {
   };
 
   const fetchBandscanMetadata = async (retryCount = 0) => {
-    if (!serverUrl || !decoderState.current.isRecording) return;
     try {
       let inputUrl = serverUrl.trim();
       if (!/^https?:\/\//i.test(inputUrl)) inputUrl = 'http://' + inputUrl;
@@ -1135,6 +1249,7 @@ const App: React.FC = () => {
     setAnalyzerActive((prev) => {
       const next = !prev;
       analyzerActiveRef.current = next;
+      decoderState.current.isDirty = true;
       return next;
     });
   }, []);
@@ -1172,12 +1287,14 @@ const App: React.FC = () => {
 
   const resetTmc = useCallback(() => {
     decoderState.current.tmcBuffer = [];
+    decoderState.current.tmcActiveMultiGroup = {};
+    decoderState.current.lastTmcMessageId = null;
     decoderState.current.isDirty = true;
   }, []);
   
   const stopRawPlayback = useCallback(() => {
     if (playbackIntervalRef.current) {
-      clearInterval(playbackIntervalRef.current);
+      clearTimeout(playbackIntervalRef.current);
       playbackIntervalRef.current = null;
     }
     decoderState.current.isPlayingRaw = false;
@@ -1200,10 +1317,20 @@ const App: React.FC = () => {
     return () => window.removeEventListener('beforeunload', handleBeforeUnload);
   }, []);
 
+  useEffect(() => {
+    const handleClickOutside = () => {
+      setShowRawMenu(false);
+      setShowSpeedMenu(false);
+    };
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
+
   const resetData = useCallback(() => {
     const state = decoderState.current;
     
     state.currentPi = "----";
+    state.isRawSource = false;
     state.rawRecordingPacketCount = 0;
     state.piCandidate = "----";
     state.piCounter = 0;
@@ -1213,13 +1340,16 @@ const App: React.FC = () => {
     state.psBuffer.fill('-');
     state.psMask.fill(false);
     state.lpsBuffer.fill(' ');
+    state.lpsMask.fill(false);
     state.ptynBuffer.fill(' ');
+    state.ptynMask.fill(false);
     state.rtBuffer0.fill(' ');
     state.rtBuffer1.fill(' ');
     state.rtMask0.fill(false);
     state.rtMask1.fill(false);
     state.rtCandidateString = "";
     state.rtStableSince = 0;
+    state.rtIs2B = false;
 
     state.afSet = [];
     state.afMethodAG3s.clear();
@@ -1229,11 +1359,14 @@ const App: React.FC = () => {
     state.currentMethodBGroup = null;
     state.eonMap.clear();
     state.tmcBuffer = [];
+    state.lastTmcMessageId = null;
     state.tmcProviderBuffer.fill(' ');
     state.rtPlusTags.clear();
     state.tdcHistoryBuffer = [];
     state.ihHistoryBuffer = [];
     state.rpHistoryBuffer = [];
+    state.taHistoryBuffer = [];
+    state.eonTaHistoryBuffer = [];
     state.rpBuffer = [];
     state.rpPagerId = "";
     state.rpLastAbFlag = null;
@@ -1249,6 +1382,7 @@ const App: React.FC = () => {
     state.odaList = [];
     state.hasRtPlus = false;
     state.hasEon = false;
+    state.eonTaInfo = undefined;
     state.hasTmc = false;
     state.hasTdc = false;
     state.hasIh = false;
@@ -1279,6 +1413,8 @@ const App: React.FC = () => {
     state.ptynAbFlag = false;
     state.tp = false;
     state.ta = false;
+    state.taInitialized = false;
+    state.eonTaInitialized = false;
     state.ms = false; 
     state.diStereo = false; 
     state.diArtificialHead = false;
@@ -1288,7 +1424,7 @@ const App: React.FC = () => {
     state.rtPlusOdaGroup = null;
     state.lastGroup0A3 = null;
     state.afType = 'Unknown';
-    state.tmcServiceInfo = { ltn: 0, sid: 0, afi: false, mode: 0, providerName: "[Identifying...]" };
+    state.tmcServiceInfo = { ltn: 0, sid: 0, providerName: "[Identifying...]" };
 
     state.groupCounts = {};
     state.groupTotal = 0;
@@ -1299,6 +1435,8 @@ const App: React.FC = () => {
     state.psCandidateString = "        ";
     state.psStableSince = 0;
     state.psValidationBuffer = "        ";
+    state.psConsecutiveBuffer.fill(' ');
+    state.nextExpectedAddress = 0;
     state.ptynCandidateString = "        ";
     state.ptynStableSince = 0;
     state.ptynValidationBuffer = "        ";
@@ -1318,9 +1456,12 @@ const App: React.FC = () => {
   const decodeRdsGroup = useCallback((g1: number, g2: number, g3: number, g4: number, rawTimestamp?: string) => {
     const state = decoderState.current;
     state.isDirty = true;
+    
+    state.lastTimeString = rawTimestamp && rawTimestamp.match(/(\d{2}:\d{2}:\d{2})/)
+      ? rawTimestamp.match(/(\d{2}:\d{2}:\d{2})/)![1]
+      : new Date().toLocaleTimeString();
 
     // Skip decoding if essential blocks are missing
-    if (isNaN(g1) || isNaN(g2)) return;
 
     const piHex = g1.toString(16).toUpperCase().padStart(4, '0');
     
@@ -1360,13 +1501,17 @@ const App: React.FC = () => {
         
         state.psBuffer.fill('-');
         state.lpsBuffer.fill(' ');
+        state.lpsMask.fill(false);
         state.ptynBuffer.fill(' ');
+    state.ptynMask.fill(false);
+        state.ptynMask.fill(false);
         state.rtBuffer0.fill(' ');
         state.rtBuffer1.fill(' ');
         state.rtMask0.fill(false);
         state.rtMask1.fill(false);
         state.rtCandidateString = "";
         state.rtStableSince = 0;
+    state.rtIs2B = false;
 
         state.afSet = [];
         state.afMethodAG3s.clear();
@@ -1376,6 +1521,7 @@ const App: React.FC = () => {
         state.currentMethodBGroup = null;
         state.eonMap.clear();
         state.tmcBuffer = [];
+    state.lastTmcMessageId = null;
         state.tmcProviderBuffer.fill(' ');
         state.rtPlusTags.clear();
         state.ertPlusTags.clear();
@@ -1386,6 +1532,7 @@ const App: React.FC = () => {
         state.odaList = [];
         state.hasRtPlus = false;
         state.hasEon = false;
+        state.eonTaInfo = undefined;
         state.hasTmc = false;
         state.hasTdc = false;
         state.hasIh = false;
@@ -1415,6 +1562,8 @@ const App: React.FC = () => {
         state.ptynAbFlag = false;
         state.tp = false;
         state.ta = false;
+        state.taInitialized = false;
+        state.eonTaInitialized = false;
         state.ms = false;
         state.diStereo = false;
         state.diArtificialHead = false;
@@ -1427,8 +1576,8 @@ const App: React.FC = () => {
         state.tmcServiceInfo = { 
           ltn: 0, 
           sid: 0, 
-          afi: false, 
-          mode: 0, 
+          
+          
           providerName: "[Identifying...]" 
         };
         
@@ -1439,6 +1588,8 @@ const App: React.FC = () => {
         state.psHistoryLogged = false;
         state.psHistoryBuffer = [];
         state.rtHistoryBuffer = [];
+        state.taHistoryBuffer = [];
+        state.eonTaHistoryBuffer = [];
         state.tdcHistoryBuffer = [];
         state.rpHistoryBuffer = [];
         state.ertHistoryBuffer = [];
@@ -1450,6 +1601,8 @@ const App: React.FC = () => {
         state.psCandidateString = "        ";
         state.psStableSince = 0;
         state.psValidationBuffer = "        ";
+    state.psConsecutiveBuffer.fill(' ');
+    state.nextExpectedAddress = 0;
         state.ptynCandidateString = "        ";
         state.ptynStableSince = 0;
         state.ptynValidationBuffer = "        ";
@@ -1478,7 +1631,7 @@ const App: React.FC = () => {
     state.rawGroupBuffer.push({
       type: groupStr,
       blocks: [g1, g2, g3, g4],
-      time: new Date().toLocaleTimeString('fr-FR')
+      time: state.lastTimeString || new Date().toLocaleTimeString('fr-FR')
     });
 
     if (state.isRawRecording) {
@@ -1528,6 +1681,18 @@ const App: React.FC = () => {
       const diBit = (g2 >> 2) & 0x01; 
       const address = g2 & 0x03; 
 
+      if (ta !== state.ta || (!state.taInitialized && ta)) {
+        const nowTime = getCurrentDateTime(state);
+        if (ta) {
+          state.taHistoryBuffer.unshift({ startTime: nowTime });
+          if (state.taHistoryBuffer.length > 50) state.taHistoryBuffer.pop();
+        } else if (state.taInitialized) {
+          const lastActive = state.taHistoryBuffer.find(h => !h.endTime);
+          if (lastActive) lastActive.endTime = nowTime;
+        }
+      }
+      state.taInitialized = true;
+      
       state.ta = ta;
       state.ms = ms;
 
@@ -1535,7 +1700,7 @@ const App: React.FC = () => {
         /* PS History archival trigger: Synchronized on Segment 0 to capture rapid title changes.
            We check the double validation of the PREVIOUS cycle before starting to overwrite the buffer. */
         const currentPsForArchive = renderRdsBuffer(state.psBuffer, false, false, true);
-        const currentPtynForArchive = renderRdsBuffer(state.ptynBuffer);
+        const currentPtynForArchive = state.ptynMask.every(m => m) ? renderRdsBuffer(state.ptynBuffer) : "";
         const piEstablishedForArchive = state.piEstablishmentTime > 0 && (Date.now() - state.piEstablishmentTime > 1000);
         
         if (piEstablishedForArchive && state.currentPi !== "----") {
@@ -1546,7 +1711,7 @@ const App: React.FC = () => {
                 if (hasContent) {
                     if (!last || last.ps !== currentPsForArchive || last.pty !== state.pty) { 
                         state.psHistoryBuffer.unshift({ 
-                            time: new Date().toLocaleTimeString(), 
+                            time: state.lastTimeString || new Date().toLocaleTimeString(), 
                             pi: state.currentPi, 
                             ps: currentPsForArchive, 
                             pty: state.pty,
@@ -1585,6 +1750,41 @@ const App: React.FC = () => {
           state.psBuffer[address * 2 + 1] = String.fromCharCode(c2);
           state.psMask[address * 2] = true;
           state.psMask[address * 2 + 1] = true;
+
+          if (address === 0) {
+            state.psConsecutiveBuffer.fill(' ');
+            state.nextExpectedAddress = 0;
+          }
+          if (address === state.nextExpectedAddress) {
+            state.psConsecutiveBuffer[address * 2] = String.fromCharCode(c1);
+            state.psConsecutiveBuffer[address * 2 + 1] = String.fromCharCode(c2);
+            state.nextExpectedAddress = (address + 1) % 4;
+            
+            if (address === 3) {
+                const newPsForArchive = renderRdsBuffer(state.psConsecutiveBuffer, false, false, true);
+                const currentPtynForArchive = state.ptynMask.every(m => m) ? renderRdsBuffer(state.ptynBuffer) : "";
+                const piEstablishedForArchive = state.piEstablishmentTime > 0 && (Date.now() - state.piEstablishmentTime > 1000);
+                if (piEstablishedForArchive && state.currentPi !== "----" && newPsForArchive.trim().length > 0) {
+                    const last = state.psHistoryBuffer[0];
+                    if (!last || last.ps !== newPsForArchive || last.pty !== state.pty) { 
+                        state.psHistoryBuffer.unshift({ 
+                            time: state.lastTimeString || new Date().toLocaleTimeString(), 
+                            pi: state.currentPi, 
+                            ps: newPsForArchive, 
+                            pty: state.pty,
+                            ptyn: currentPtynForArchive
+                        }); 
+                        if (state.psHistoryBuffer.length > 200) state.psHistoryBuffer.pop();
+                        state.psHistoryLogged = true; 
+                        state.psValidationBuffer = newPsForArchive;
+                    } else if (last.ptyn !== currentPtynForArchive && currentPtynForArchive.trim() !== "") {
+                        last.ptyn = currentPtynForArchive;
+                    }
+                }
+            }
+          } else {
+             state.nextExpectedAddress = 0;
+          }
         }
       }
 
@@ -1725,27 +1925,35 @@ const App: React.FC = () => {
           state.afType = (validCandidates.length > 1 || (validCandidates.length === 1 && validCandidates[0].pairCount > 0 && (validCandidates[0].matchCount / validCandidates[0].pairCount > 0.35))) ? 'B' : 'A';
         }
       }
-    } else if (groupTypeVal === 16 && !state.odaList.some(oda => oda.group === '8A' && oda.aid !== 'CD46')) {
+    } else if (groupTypeVal === 16 && !state.odaList.some(oda => oda.group === '8A' && oda.aid !== 'CD46' && oda.aid !== 'CD47')) {
       state.hasTmc = true;
       const tuningFlag = (g2 >> 4) & 0x01;
       const variant = g2 & 0x0F;
       
       if (tuningFlag === 1) {
-        if (variant === 0 || variant === 1) {
-          if (!isNaN(g3)) {
-            const ltn = (g3 >> 10) & 0x3F;
-            const sid = (g3 >> 2) & 0x3F;
-            if (ltn > 0 || sid > 0) {
-              state.tmcServiceInfo = {
-                ...state.tmcServiceInfo,
-                ltn: ltn,
-                sid: sid,
-                afi: !!((g3 >> 9) & 0x01),
-                mode: (g3 >> 8) & 0x01
-              };
+        if (variant === 0) {
+            if (!isNaN(g3) && !isNaN(g4)) {
+               const newSid = (g3 >> 5) & 0x3F;
+               const newLtn = (g4 >> 10) & 0x3F;
+               let changed = false;
+               if (newSid > 0 && state.tmcServiceInfo.sid !== newSid) {
+                   state.tmcServiceInfo.sid = newSid;
+                   changed = true;
+               }
+               if (state.tmcServiceInfo.encId !== (g3 & 0x1F)) {
+                   state.tmcServiceInfo.encId = g3 & 0x1F;
+                   changed = true;
+               }
+               if (newLtn > 0 && state.tmcServiceInfo.ltn !== newLtn) {
+                   state.tmcServiceInfo.ltn = newLtn;
+                   changed = true;
+               }
+               if (changed) {
+                   state.tmcServiceInfo = { ...state.tmcServiceInfo };
+                   state.isDirty = true;
+               }
             }
-          }
-        } else if (variant >= 4 && variant <= 5) {
+        } else if (variant === 4 || variant === 5) {
           const offset = (variant - 4) * 4;
           if (!isNaN(g3)) {
             state.tmcProviderBuffer[offset] = String.fromCharCode((g3 >> 8) & 0xFF);
@@ -1755,13 +1963,79 @@ const App: React.FC = () => {
             state.tmcProviderBuffer[offset + 2] = String.fromCharCode((g4 >> 8) & 0xFF);
             state.tmcProviderBuffer[offset + 3] = String.fromCharCode(g4 & 0xFF);
           }
-          const providerName = state.tmcProviderBuffer.join('').trim();
+          const providerName = state.tmcProviderBuffer.join('').replace(/\0/g, '').trim();
           if (providerName) {
-            state.tmcServiceInfo.providerName = providerName;
-            const idx = state.odaList.findIndex(o => o.aid === 'CD46');
-            if (idx !== -1) {
+            if (state.tmcServiceInfo.providerName !== providerName) {
+              state.tmcServiceInfo.providerName = providerName;
+              state.tmcServiceInfo = { ...state.tmcServiceInfo };
+              state.isDirty = true;
+            }
+            const idx = state.odaList.findIndex(o => o.aid === 'CD46' || o.aid === 'CD47');
+            if (idx !== -1 && !state.odaList[idx].extra?.includes(providerName)) {
               state.odaList[idx].extra = ` -> Provider Name: ${providerName}`;
               state.isDirty = true;
+            }
+          }
+        } else if (variant >= 6 && variant <= 9) {
+          if (!state.tmcServiceInfo.tuningInfo) {
+            state.tmcServiceInfo.tuningInfo = {};
+          }
+          
+          const registerPi = (pi: string) => {
+            if (pi && pi !== "0000") {
+              if (!state.tmcServiceInfo.tuningInfo![pi]) {
+                 state.tmcServiceInfo.tuningInfo![pi] = [];
+                 state.tmcServiceInfo = { ...state.tmcServiceInfo }; // Force React reference update
+                 state.isDirty = true;
+              }
+            }
+          };
+
+          if (variant === 8) {
+            const pi1 = (!isNaN(g3)) ? g3.toString(16).toUpperCase().padStart(4, '0') : "";
+            const pi2 = (!isNaN(g4)) ? g4.toString(16).toUpperCase().padStart(4, '0') : "";
+            if (pi1 && pi1 !== "0000") registerPi(pi1);
+            if (pi2 && pi2 !== "0000") registerPi(pi2);
+          } else if (variant === 9) {
+            const onPi = (!isNaN(g4)) ? g4.toString(16).toUpperCase().padStart(4, '0') : "";
+            if (onPi && onPi !== "0000") {
+              registerPi(onPi);
+              if (!isNaN(g3)) {
+                if (!state.tmcServiceInfo.otherNetworks) state.tmcServiceInfo.otherNetworks = {};
+                state.tmcServiceInfo.otherNetworks[onPi] = {
+                  sid: g3 & 0x3F,
+                  mgs: (g3 >> 6) & 0x0F,
+                  ltn: (g3 >> 10) & 0x3F
+                };
+                state.tmcServiceInfo = { ...state.tmcServiceInfo };
+                state.isDirty = true;
+              }
+            }
+          } else {
+            const piTarget = (!isNaN(g4)) ? g4.toString(16).toUpperCase().padStart(4, '0') : "";
+            if (piTarget && piTarget !== "0000") {
+              registerPi(piTarget);
+              
+              if (variant === 6 || variant === 7) {
+                const extractAf = (val: number) => {
+                  if (val >= 1 && val <= 204) return parseFloat((87.5 + val * 0.1).toFixed(1));
+                  return 0;
+                };
+                const addAf = (val: number, pi: string) => {
+                   const freq = extractAf(val);
+                   if (freq > 0 && !state.tmcServiceInfo.tuningInfo![pi].includes(freq)) {
+                       state.tmcServiceInfo.tuningInfo![pi].push(freq);
+                       state.tmcServiceInfo.tuningInfo![pi].sort((a, b) => a - b);
+                       state.tmcServiceInfo = { ...state.tmcServiceInfo }; // Force React reference update
+                       state.isDirty = true;
+                   }
+                };
+    
+                if (!isNaN(g3)) {
+                  addAf((g3 >> 8) & 0xFF, piTarget);
+                  addAf(g3 & 0xFF, piTarget);
+                }
+              }
             }
           }
         }
@@ -1769,66 +2043,226 @@ const App: React.FC = () => {
 
       if (tmcActiveRef.current && !tmcPausedRef.current) {
         if (tuningFlag === 0) {
-          const cc = g2 & 0x07;
-          if (!isNaN(g3) && !isNaN(g4)) {
-            const durationCode = (g3 >> 13) & 0x07;
-            const diversion = !!((g3 >> 12) & 0x01);
-            const direction = !!((g3 >> 11) & 0x01);
-            const eventCode = g3 & 0x07FF; 
-            const location = g4; 
-            
-            if (eventCode === 0 && location === 0) {
-              return;
-            }
+            const f = (g2 >> 3) & 0x01; // 1 = Single group, 0 = Multi group
+            const dp = g2 & 0x07;
+            if (!isNaN(g3) && !isNaN(g4)) {
+              if (f === 0 && dp === 0) {
+                 // Encryption Administration Group
+                 const newSid = (g3 >> 5) & 0x3F;
+                 const newEncId = g3 & 0x1F;
+                 const newLtn = (g4 >> 10) & 0x3F;
+                 let changed = false;
+                 if (newSid > 0 && state.tmcServiceInfo.sid !== newSid) {
+                     state.tmcServiceInfo.sid = newSid;
+                     changed = true;
+                 }
+                 if (state.tmcServiceInfo.encId !== newEncId) {
+                     state.tmcServiceInfo.encId = newEncId;
+                     changed = true;
+                 }
+                 if (newLtn > 0 && state.tmcServiceInfo.ltn !== newLtn) {
+                     state.tmcServiceInfo.ltn = newLtn;
+                     changed = true;
+                 }
+                 if (changed) {
+                     state.tmcServiceInfo = { ...state.tmcServiceInfo };
+                     state.isDirty = true;
+                 }
+              } else {
+              let diversion = false;
+              let direction = false;
+              let extent = 0;
+              let durationCode = 0;
+              let eventCode = 0;
+              let location = 0;
+              
+              
 
-            const now = new Date();
-            const durInfo = getDurationLabel(durationCode);
-            let expiresTime = "--:--:--";
-            if (durInfo.minutes > 0) {
-              expiresTime = new Date(now.getTime() + durInfo.minutes * 60000).toLocaleTimeString('fr-FR');
-            } else if (durationCode === 7) {
-              expiresTime = "Indefinite";
-            }
+              let isMultiGroup = false;
 
-            const urgency = getEventUrgency(eventCode);
-            const nature = getEventNature(eventCode);
+              if (f === 1) {
+                // Single-group message
+                durationCode = dp;
+                diversion = !!((g3 >> 15) & 0x01);
+                direction = !!((g3 >> 14) & 0x01);
+                extent = (g3 >> 11) & 0x07;
+                eventCode = g3 & 0x07FF;
+                location = g4;
+              } else {
+                // Multi-group message
+                isMultiGroup = true;
+                const fgi = (g3 >> 15) & 0x01; // 1 = First group, 0 = Subsequent group
+                if (fgi === 1) {
+                  // Duration is in the second group. Use 0 for now.
+                  durationCode = 0; 
+                  diversion = false;
+                  direction = !!((g3 >> 14) & 0x01);
+                  extent = (g3 >> 11) & 0x07;
+                  eventCode = g3 & 0x07FF;
+                  location = g4;
+                } else {
+                   // We skip subsequent groups for event creation to avoid garbage events
+                   return;
+                }
+              }
 
-            const existingIndex = state.tmcBuffer.findIndex((m) => {
-              return m.locationCode === location && m.eventCode === eventCode && m.direction === direction;
-            });
+              let receivedTimestamp = Date.now();
+              if (state.isPlayingRaw && rawTimestamp) {
+                const today = new Date();
+                const timeMatch = rawTimestamp.match(/(\d{2}):(\d{2}):(\d{2})/);
+                const dateMatch = rawTimestamp.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/) || rawTimestamp.match(/(\d{2})[\/\-](\d{2})[\/\-](\d{4})/);
+                  
+                if (timeMatch) {
+                  if (dateMatch) {
+                    const year = dateMatch[1].length === 4 ? dateMatch[1] : dateMatch[3]; const month = dateMatch[2]; const day = dateMatch[1].length === 4 ? dateMatch[3] : dateMatch[1];
+                    receivedTimestamp = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), 
+                                                parseInt(timeMatch[1]), parseInt(timeMatch[2]), parseInt(timeMatch[3])).getTime();
+                  } else {
+                    receivedTimestamp = new Date(today.getFullYear(), today.getMonth(), today.getDate(),
+                                                parseInt(timeMatch[1]), parseInt(timeMatch[2]), parseInt(timeMatch[3])).getTime();
+                  }
+                }
+              }
+                  
+              const formatTmcTime = (date: Date): string => {
+                  const day = date.getDate().toString().padStart(2, '0');
+                  const month = (date.getMonth() + 1).toString().padStart(2, '0');
+                  const year = date.getFullYear();
+                  const hours = date.getHours().toString().padStart(2, '0');
+                  const minutes = date.getMinutes().toString().padStart(2, '0');
+                  const seconds = date.getSeconds().toString().padStart(2, '0');
+                  return `${day}/${month}/${year} - ${hours}:${minutes}:${seconds}`;
+              };
 
-            if (existingIndex !== -1) {
-              const existing = state.tmcBuffer[existingIndex];
-              existing.receivedTime = now.toLocaleTimeString('fr-FR');
-              existing.expiresTime = expiresTime;
-              existing.updateCount = (existing.updateCount || 1) + 1;
-              existing.urgency = urgency;
-              existing.nature = nature;
+              let receivedTimeStr = formatTmcTime(new Date(receivedTimestamp));
+              if (state.isPlayingRaw && rawTimestamp) {
+                  const dateMatch = rawTimestamp.match(/(\d{4})[\/\-](\d{2})[\/\-](\d{2})/);
+                  const timeMatch = rawTimestamp.match(/(\d{2}):(\d{2}):(\d{2})/);
+                  if (dateMatch && timeMatch) {
+                      const year = dateMatch[1];
+                      const month = dateMatch[2];
+                      const day = dateMatch[3];
+                      const hours = timeMatch[1];
+                      const minutes = timeMatch[2];
+                      const seconds = timeMatch[3];
+                      receivedTimeStr = `${day}/${month}/${year} - ${hours}:${minutes}:${seconds}`;
+                  } else {
+                      receivedTimeStr = rawTimestamp;
+                  }
+              }
+
+              if (eventCode === 0 || (g3 === 0x4AC0 && g4 === 0xF5BB)) {
+                return;
+              }
+
+              // Handle message cancellations (e.g. 128, 625, 971)
+              if (eventCode === 128 || eventCode === 625 || eventCode === 971) {
+                state.tmcBuffer = state.tmcBuffer.filter((m) => !(m.locationCode === location && m.direction === direction));
+                return; // Do not add the cancellation event itself
+              }
+
+              const durInfo = getDurationLabel(durationCode, eventCode);
+              let expiresTimeStr = "--:--:--";
+                
+              const dt = new Date(receivedTimestamp);
+              if (durInfo.isLongerLasting) {
+                 if (durationCode > 0) {
+                    const expireDate = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + durInfo.days + 1, 0, 0, 0);
+                    expiresTimeStr = formatTmcTime(expireDate);
+                 }
+              } else {
+                 if (durInfo.minutes > 0) {
+                    const expireDate = new Date(receivedTimestamp + durInfo.minutes * 60000);
+                    expiresTimeStr = formatTmcTime(expireDate);
+                 } else if (durationCode === 7) {
+                    const expireDate = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1, 0, 0, 0);
+                    expiresTimeStr = formatTmcTime(expireDate);
+                 }
+              }
+
+              const urgency = getEventUrgency(eventCode);
+              const nature = getEventNature(eventCode);
+              const isClosure = (code: number) => code >= 401 && code <= 410;
+              const isContraflow = (code: number) => code === 517 || code === 576; // Contraflow
+
+              let existingIndex = state.tmcBuffer.findIndex((m) => m.locationCode === location && m.direction === direction && m.extent === extent && m.eventCode === eventCode);
+              let inheritedUpdates = 0;
+
+              if (existingIndex === -1) {
+                if (isClosure(eventCode)) {
+                  // A closure on direction D absorbs ANY existing non-closure events for the exact same location and direction
+                  for (let i = state.tmcBuffer.length - 1; i >= 0; i--) {
+                    const m = state.tmcBuffer[i];
+                    if (m.locationCode === location && m.direction === direction && m.eventCode !== eventCode && !isClosure(m.eventCode)) {
+                      inheritedUpdates += (m.updateCount || 1);
+                      state.tmcBuffer.splice(i, 1);
+                    }
+                  }
+                } else {
+                  // If the new event is NOT a closure, check if a closure ALREADY exists for the exact same location and direction
+                  const closureIndex = state.tmcBuffer.findIndex((m) => m.locationCode === location && m.direction === direction && isClosure(m.eventCode));
+                  if (closureIndex !== -1) {
+                    existingIndex = closureIndex;
+                  }
+                }
+              }
+
+              if (existingIndex !== -1) {
+                const existing = state.tmcBuffer[existingIndex];
+                
+                existing.updateCount = (existing.updateCount || 1) + 1 + inheritedUpdates;
+                
+                state.lastTmcMessageId = existing.id;
+                
+                existing.lastCountedTimestamp = receivedTimestamp;
+                existing.lastGroupTotal = state.groupTotal;
+                
+                existing.lastUpdatedTimestamp = receivedTimestamp;
+                existing.lastUpdatedTime = receivedTimeStr;
+                existing.expiresTime = expiresTimeStr;
+                existing.urgency = urgency;
+                existing.nature = nature;
+                existing.extent = extent;
+                existing.eventCode = eventCode;
+                existing.label = getEventCategory(eventCode);
+                if (!isMultiGroup) existing.durationCode = durationCode; // only update if single group
+                const existingDurInfo = getDurationLabel(existing.durationCode, eventCode);
+                existing.durationLabel = existingDurInfo.label;
+                existing.durationType = existingDurInfo.isLongerLasting ? "Longer Lasting" : "Dynamic";
+
             } else {
+              const newId = tmcIdCounter.current++;
+              state.lastTmcMessageId = newId;
               state.tmcBuffer.unshift({
-                id: tmcIdCounter.current++,
-                receivedTime: now.toLocaleTimeString('fr-FR'),
-                expiresTime: expiresTime,
+                lastUpdatedTimestamp: receivedTimestamp,
+                lastCountedTimestamp: receivedTimestamp,
+                lastGroupTotal: state.groupTotal,
+                id: newId,
+                receivedTime: receivedTimeStr,
+                lastUpdatedTime: receivedTimeStr,
+                expiresTime: expiresTimeStr,
                 isSystem: false,
                 label: getEventCategory(eventCode),
-                cc: cc,
+                cc: dp,
                 eventCode: eventCode,
                 locationCode: location,
-                extent: 0,
+                extent: extent,
                 durationCode: durationCode,
                 direction: direction,
                 diversion: diversion,
                 urgency: urgency, 
                 nature: nature,
                 durationLabel: durInfo.label,
-                updateCount: 1
+                durationType: durInfo.isLongerLasting ? "Longer Lasting" : "Dynamic",
+                updateCount: 1 + inheritedUpdates
               });
               if (state.tmcBuffer.length > 500) {
                 state.tmcBuffer.pop();
               }
+              }
             }
           }
-        }
+      }
       }
     } else if ((groupTypeVal === 10 || groupTypeVal === 11) && !state.odaList.some(oda => oda.group === (groupTypeVal === 10 ? '5A' : '5B'))) {
       // Group 5A or 5B: TDC (Transparent Data Channels)
@@ -1859,7 +2293,7 @@ const App: React.FC = () => {
           // We trigger a new line if the index has wrapped around and we have data
           if (tdcIndex < lastIndex && currentBuffer.trim().length > 0) {
             state.tdcHistoryBuffer.unshift({
-              time: new Date().toLocaleTimeString('fr-FR'),
+              time: state.lastTimeString || new Date().toLocaleTimeString('fr-FR'),
               text: currentBuffer.trim(),
               group: groupLabel,
               channel: lastIndex
@@ -1883,7 +2317,7 @@ const App: React.FC = () => {
                   textToSave += String.fromCharCode(0x0D);
                 }
                 state.tdcHistoryBuffer.unshift({
-                  time: new Date().toLocaleTimeString('fr-FR'),
+                  time: state.lastTimeString || new Date().toLocaleTimeString('fr-FR'),
                   text: textToSave,
                   group: groupLabel,
                   channel: tdcIndex
@@ -1901,7 +2335,7 @@ const App: React.FC = () => {
               // Safety: if buffer gets too long without terminator, push it
               if (currentBuffer.length > 1024) {
                 state.tdcHistoryBuffer.unshift({
-                  time: new Date().toLocaleTimeString('fr-FR'),
+                  time: state.lastTimeString || new Date().toLocaleTimeString('fr-FR'),
                   text: currentBuffer.trim(),
                   group: groupLabel,
                   channel: tdcIndex
@@ -1950,7 +2384,7 @@ const App: React.FC = () => {
           const combinedText = `HEX: ${hexStr} | DEC: ${decStr} | ASC: ${asciiStr}`;
           
           state.ihHistoryBuffer.unshift({
-            time: new Date().toLocaleTimeString('fr-FR'),
+            time: state.lastTimeString || new Date().toLocaleTimeString('fr-FR'),
             text: combinedText,
             group: groupLabel,
             channel: g2 & 0x1F
@@ -2052,7 +2486,7 @@ const App: React.FC = () => {
           }
 
           state.rpHistoryBuffer.unshift({
-            time: new Date().toLocaleTimeString('fr-FR'),
+            time: state.lastTimeString || new Date().toLocaleTimeString('fr-FR'),
             text: combinedText,
             group: '7A',
             address: addr,
@@ -2078,6 +2512,10 @@ const App: React.FC = () => {
             pi: eonPi, 
             ps: "--------", 
             psBuffer: new Array(8).fill('-'), 
+            psConsecutiveBuffer: new Array(8).fill(' '),
+            nextExpectedVariant: 0,
+            psValidationBuffer: "",
+            consecutiveCount: 0,
             tp: false, 
             ta: false, 
             pty: 0, 
@@ -2085,7 +2523,8 @@ const App: React.FC = () => {
             linkageInfo: "", 
             af: [], 
             mappedFreqs: [], 
-            lastUpdate: Date.now()
+            lastUpdate: Date.now(),
+            psHistory: []
           });
         }
         const network = state.eonMap.get(eonPi)!;
@@ -2099,7 +2538,43 @@ const App: React.FC = () => {
             if (c1 >= 0x20 && c2 >= 0x20) {
               network.psBuffer[variant * 2] = String.fromCharCode(c1);
               network.psBuffer[variant * 2 + 1] = String.fromCharCode(c2);
-              network.ps = renderRdsBuffer(network.psBuffer);
+              const newPs = renderRdsBuffer(network.psBuffer);
+              if (newPs !== network.ps) {
+                network.ps = newPs;
+                state.isDirty = true;
+              }
+
+              if (!network.psConsecutiveBuffer) {
+                network.psConsecutiveBuffer = new Array(8).fill(' ');
+                network.nextExpectedVariant = 0;
+              }
+
+              if (variant === 0) {
+                network.psConsecutiveBuffer.fill(' ');
+                network.psConsecutiveBuffer[0] = String.fromCharCode(c1);
+                network.psConsecutiveBuffer[1] = String.fromCharCode(c2);
+                network.nextExpectedVariant = 1;
+              } else if (variant === network.nextExpectedVariant) {
+                network.psConsecutiveBuffer[variant * 2] = String.fromCharCode(c1);
+                network.psConsecutiveBuffer[variant * 2 + 1] = String.fromCharCode(c2);
+                network.nextExpectedVariant = (variant + 1) % 4;
+
+                if (variant === 3) {
+                  const completePs = renderRdsBuffer(network.psConsecutiveBuffer, false, false, true);
+                  if (completePs.trim().length > 0) {
+                    if (!network.psHistory) network.psHistory = [];
+                    const last = network.psHistory[0];
+                    if (!last || last.ps !== completePs) {
+                      const timeStr = state.lastTimeString || new Date().toLocaleTimeString();
+                      network.psHistory.unshift({ time: timeStr, ps: completePs });
+                      if (network.psHistory.length > 200) network.psHistory.pop();
+                      state.isDirty = true;
+                    }
+                  }
+                }
+              } else {
+                network.nextExpectedVariant = 0;
+              }
             }
           }
         } else if (variant === 4) {
@@ -2145,6 +2620,74 @@ const App: React.FC = () => {
           }
         }
       }
+    } else if (groupTypeVal === 29) {
+      state.hasEon = true;
+      if (!isNaN(g2) && !isNaN(g4)) {
+        const isTaActive = !!((g2 >> 3) & 0x01);
+        const targetPi = g4.toString(16).toUpperCase().padStart(4, '0');
+        const now = Date.now();
+
+        if (isTaActive) {
+          let timeStr = "";
+          if (rawTimestamp) {
+            const timeMatch = rawTimestamp.match(/(\d{2}:\d{2})/);
+            if (timeMatch) timeStr = timeMatch[1];
+          }
+          if (!timeStr && state.lastTimeString) {
+            const timeMatch = state.lastTimeString.match(/(\d{2}:\d{2})/);
+            if (timeMatch) timeStr = timeMatch[1];
+          }
+          if (!timeStr) {
+            const d = new Date();
+            timeStr = `${d.getHours().toString().padStart(2, '0')}:${d.getMinutes().toString().padStart(2, '0')}`;
+          }
+
+          if (!state.eonTaInitialized || (!state.eonTaInfo || !state.eonTaInfo.isActive)) {
+            const nowTime = getCurrentDateTime(state);
+            state.eonTaHistoryBuffer.unshift({ startTime: nowTime, pi: targetPi });
+            if (state.eonTaHistoryBuffer.length > 50) state.eonTaHistoryBuffer.pop();
+
+            state.eonTaInitialized = true;
+            state.eonTaInfo = {
+              targetPi,
+              time: timeStr,
+              detectedAtTimestamp: now,
+              lastActiveTimestamp: now,
+              stoppedAtTimestamp: undefined,
+              isActive: true,
+              isBlinking: true,
+              blinkMode: 'fast',
+              hasBeenSeen: false
+            };
+          } else {
+            state.eonTaInfo.lastActiveTimestamp = now;
+            state.eonTaInfo.targetPi = targetPi;
+            if (!state.eonTaInfo.hasBeenSeen) {
+              state.eonTaInfo.isBlinking = true;
+              state.eonTaInfo.blinkMode = 'fast';
+            }
+          }
+          state.isDirty = true;
+        } else {
+          if (!state.eonTaInitialized) {
+            state.eonTaInitialized = true;
+          } else if (state.eonTaInfo && state.eonTaInfo.isActive) {
+            const nowTime = getCurrentDateTime(state);
+            const lastActive = state.eonTaHistoryBuffer.find(h => !h.endTime);
+            if (lastActive) lastActive.endTime = nowTime;
+
+            state.eonTaInfo.isActive = false;
+            state.eonTaInfo.stoppedAtTimestamp = now;
+            if (!state.eonTaInfo.hasBeenSeen) {
+              state.eonTaInfo.isBlinking = true;
+              state.eonTaInfo.blinkMode = 'slow';
+            } else {
+              state.eonTaInfo.isBlinking = false;
+            }
+            state.isDirty = true;
+          }
+        }
+      }
     } else if (groupTypeVal === 2 || groupTypeVal === 3) {
       if (groupTypeVal === 2) {
         if (!isNaN(g3)) {
@@ -2168,6 +2711,7 @@ const App: React.FC = () => {
       const textAbFlag = !!((g2 >> 4) & 0x01); 
       if (state.abFlag !== textAbFlag) {
         state.abFlag = textAbFlag;
+        state.rtCandidateString = "";
         state.rtPlusTags.forEach((tag) => {
           tag.isCached = true;
         });
@@ -2179,6 +2723,7 @@ const App: React.FC = () => {
         (textAbFlag ? state.rtBuffer1 : state.rtBuffer0).fill(' '); 
       }
       const isGroup2A = groupTypeVal === 4;
+      state.rtIs2B = !isGroup2A;
       const address = g2 & 0x0F; 
       const target = textAbFlag ? state.rtBuffer1 : state.rtBuffer0;
       const mask = textAbFlag ? state.rtMask1 : state.rtMask0;
@@ -2220,8 +2765,32 @@ const App: React.FC = () => {
         } else if (targetGroup === '7A') {
           state.hasRp = false;
           state.rpSeenDuringGrace = false;
-        } else if (targetGroup === '8A' && aid !== 'CD46') {
+        } else if (targetGroup === '8A' && aid !== 'CD46' && aid !== 'CD47') {
           state.hasTmc = false;
+        }
+
+        if (aid === 'CD46' || aid === 'CD47') {
+          if (!isNaN(g3)) {
+             const variant = (g3 >> 14) & 0x03;
+             if (variant === 0) {
+               const ltn3a = (g3 >> 6) & 0x3F;
+               if (ltn3a > 0) {
+                 state.tmcServiceInfo.ltn = ltn3a;
+               }
+               state.tmcServiceInfo.isEncrypted = ltn3a === 0;
+               state.tmcServiceInfo.mgs = g3 & 0x0F;
+             } else if (variant === 1) {
+               state.tmcServiceInfo.sid = (g3 >> 6) & 0x3F;
+               const gapIdx = (g3 >> 12) & 0x03;
+               state.tmcServiceInfo.gap = gapIdx;
+               const ltcc = g3 & 0x0F;
+               if (ltcc > 0) state.tmcServiceInfo.cid = ltcc.toString();
+             } else if (variant === 2) {
+               state.tmcServiceInfo.ltecc = g3 & 0xFF;
+             }
+             state.tmcServiceInfo = { ...state.tmcServiceInfo };
+             state.isDirty = true;
+          }
         }
 
         if (aid === '0093') {
@@ -2231,7 +2800,7 @@ const App: React.FC = () => {
         let extraInfo: string | undefined = undefined;
         if (aid === '0093') {
             extraInfo = state.dabExtraInfo;
-        } else if (aid === 'CD46' && state.tmcServiceInfo?.providerName && state.tmcServiceInfo.providerName !== "[Identifying...]") {
+        } else if ((aid === 'CD46' || aid === 'CD47') && state.tmcServiceInfo?.providerName && state.tmcServiceInfo.providerName !== "[Identifying...]") {
             extraInfo = ` -> Provider Name: ${state.tmcServiceInfo.providerName}`;
         }
 
@@ -2277,7 +2846,6 @@ const App: React.FC = () => {
         // Verification: Ensure all segments from 0 to endSegment have been received
         // This prevents archiving incomplete messages when segments arrive out of order
         for (let i = 0; i <= endSegment; i++) {
-          if (!state.ertMask[i]) return; 
         }
 
         let fullMsg = renderRdsBuffer(state.ertBuffer, true).split('\x0D')[0].trim();
@@ -2298,7 +2866,7 @@ const App: React.FC = () => {
             }).filter(t => t.text.length > 0);
 
             state.ertHistoryBuffer.unshift({
-              time: new Date().toLocaleTimeString('fr-FR'),
+              time: state.lastTimeString || new Date().toLocaleTimeString('fr-FR'),
               text: fullMsg,
               group: groupStr,
               tags: resolvedTags
@@ -2369,7 +2937,6 @@ const App: React.FC = () => {
       state.rtPlusItemRunning = !!((g2 >> 3) & 0x01);
       const processTag = (id: number, start: number, len: number) => {
         if (id === 0) {
-          return;
         }
         const existing = state.rtPlusTags.get(id);
         state.rtPlusTags.set(id, { 
@@ -2416,7 +2983,6 @@ const App: React.FC = () => {
       
       const g2Spare = g2 & 0x07;
       const processErtTag = (id: number, start: number, len: number) => {
-        if (id === 0) return;
         const existing = state.ertPlusTags.get(id);
         state.ertPlusTags.set(id, {
           contentType: id,
@@ -2461,7 +3027,7 @@ const App: React.FC = () => {
             // Time Error Calculation
             let refNaiveLocalMs: number | null = null;
             if (rawTimestamp) {
-              const parseMatch = rawTimestamp.match(/^(\d{4})\/(\d{2})\/(\d{2})\s+(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?$/);
+              const parseMatch = rawTimestamp.match(/^(\d{4})[-\/](\d{2})[-\/](\d{2})\s+(\d{2}):(\d{2}):(\d{2})(?:\.(\d+))?$/);
               if (parseMatch) {
                 const ms = parseMatch[7] ? parseInt(parseMatch[7].padEnd(3, '0').slice(0, 3), 10) : 0;
                 refNaiveLocalMs = Date.UTC(+parseMatch[1], +parseMatch[2] - 1, +parseMatch[3], +parseMatch[4], +parseMatch[5], +parseMatch[6], ms);
@@ -2525,16 +3091,22 @@ const App: React.FC = () => {
       const newFlag = !!((g2 >> 4) & 0x01);
       if (state.ptynAbFlag !== newFlag) {
         state.ptynAbFlag = newFlag;
-        state.ptynBuffer.fill(' '); // Force reset of the PTYN value specifically when flag (A/B) changes
+        state.ptynBuffer.fill(' ');
+    state.ptynMask.fill(false); // Force reset of the PTYN value specifically when flag (A/B) changes
+        state.ptynMask.fill(false);
       }
       const address = g2 & 0x01; 
       if (!isNaN(g3)) {
         state.ptynBuffer[address * 4] = String.fromCharCode((g3 >> 8) & 0xFF);
         state.ptynBuffer[address * 4 + 1] = String.fromCharCode(g3 & 0xFF);
+        state.ptynMask[address * 4] = true;
+        state.ptynMask[address * 4 + 1] = true;
       }
       if (!isNaN(g4)) {
         state.ptynBuffer[address * 4 + 2] = String.fromCharCode((g4 >> 8) & 0xFF);
         state.ptynBuffer[address * 4 + 3] = String.fromCharCode(g4 & 0xFF);
+        state.ptynMask[address * 4 + 2] = true;
+        state.ptynMask[address * 4 + 3] = true;
       }
     } else if (groupTypeVal === 30) {
       const address = g2 & 0x0F; 
@@ -2543,10 +3115,14 @@ const App: React.FC = () => {
         if (!isNaN(g3)) {
           state.lpsBuffer[idx] = String.fromCharCode((g3 >> 8) & 0xFF);
           state.lpsBuffer[idx+1] = String.fromCharCode(g3 & 0xFF);
+          state.lpsMask[idx] = true;
+          state.lpsMask[idx+1] = true;
         }
         if (!isNaN(g4)) {
           state.lpsBuffer[idx+2] = String.fromCharCode((g4 >> 8) & 0xFF);
           state.lpsBuffer[idx+3] = String.fromCharCode(g4 & 0xFF);
+          state.lpsMask[idx+2] = true;
+          state.lpsMask[idx+3] = true;
         }
       }
     }
@@ -2556,11 +3132,19 @@ const App: React.FC = () => {
     let animationFrameId: number;
     const loop = () => {
       const state = decoderState.current;
+      const now = Date.now();
+      if (state.eonTaInfo) {
+        if (state.eonTaInfo.isBlinking && state.eonTaInfo.blinkMode === 'slow' && state.eonTaInfo.stoppedAtTimestamp) {
+          if (now - state.eonTaInfo.stoppedAtTimestamp > 300000) {
+            state.eonTaInfo.isBlinking = false;
+            state.isDirty = true;
+          }
+        }
+      }
       if (state.isDirty || state.rawGroupBuffer.length > 0) {
-        const now = Date.now();
         const currentPs = renderRdsBuffer(state.psBuffer, false, false, true);
         const currentPtyn = renderRdsBuffer(state.ptynBuffer);
-        const activeRtStr = state.abFlag ? renderRdsBuffer(state.rtBuffer1, false, true) : renderRdsBuffer(state.rtBuffer0, false, true);
+        const activeRtStr = state.abFlag ? renderRdsBuffer(state.rtIs2B ? state.rtBuffer1.slice(0, 32) : state.rtBuffer1, false, true) : renderRdsBuffer(state.rtIs2B ? state.rtBuffer0.slice(0, 32) : state.rtBuffer0, false, true);
         
         state.rtPlusTags.forEach(tag => {
           if (!tag.isCached) {
@@ -2601,18 +3185,31 @@ const App: React.FC = () => {
         const cRtBuf = state.abFlag ? state.rtBuffer1 : state.rtBuffer0; 
         const cRtMsk = state.abFlag ? state.rtMask1 : state.rtMask0;
         const termIdx = cRtBuf.indexOf('\r'); 
-        let isRtC = termIdx !== -1 ? cRtMsk.slice(0, termIdx).every(Boolean) : cRtMsk.every(Boolean);
-        let rawRt = renderRdsBuffer(cRtBuf, false, true).replace(/ +$/, '');
+        let isRtC = termIdx !== -1 ? cRtMsk.slice(0, termIdx).every(Boolean) : cRtMsk.slice(0, state.rtIs2B ? 32 : 64).every(Boolean);
+        let rawRt = renderRdsBuffer(state.rtIs2B ? cRtBuf.slice(0, 32) : cRtBuf, false, true).replace(/ +$/, '');
         if (isRtC) {
-          if (rawRt !== state.rtCandidateString) { 
-            state.rtCandidateString = rawRt; 
-            state.rtStableSince = now; 
-          }
-          if (now - state.rtStableSince >= 2000) {
+          if (state.rtCandidateString === "") {
+            state.rtCandidateString = rawRt;
+            state.rtStableSince = now;
             const last = state.rtHistoryBuffer[0];
             if ((!last || last.text !== rawRt) && rawRt.trim().length > 0) { 
               state.rtHistoryBuffer.unshift({ 
-                time: new Date().toLocaleTimeString(), 
+                time: state.lastTimeString || new Date().toLocaleTimeString(), 
+                text: rawRt,
+                isB: state.abFlag
+              }); 
+              if (state.rtHistoryBuffer.length > 200) {
+                state.rtHistoryBuffer.pop();
+              }
+            }
+          } else if (rawRt !== state.rtCandidateString) { 
+            state.rtCandidateString = rawRt; 
+            state.rtStableSince = now; 
+          } else if (now - state.rtStableSince >= 2000) {
+            const last = state.rtHistoryBuffer[0];
+            if ((!last || last.text !== rawRt) && rawRt.trim().length > 0) { 
+              state.rtHistoryBuffer.unshift({ 
+                time: state.lastTimeString || new Date().toLocaleTimeString(), 
                 text: rawRt,
                 isB: state.abFlag
               }); 
@@ -2634,7 +3231,12 @@ const App: React.FC = () => {
         const cBer = berHistoryRef.current.length > 0 ? (berHistoryRef.current.reduce((a, b) => a + b, 0) / berHistoryRef.current.length) * 100 : 0;
         const eonData: Record<string, EonNetwork> = {}; 
         state.eonMap.forEach((val, key) => {
-          eonData[key] = val;
+          eonData[key] = {
+            ...val,
+            af: [...val.af],
+            mappedFreqs: [...val.mappedFreqs],
+            psHistory: val.psHistory ? [...val.psHistory] : []
+          };
         });
         const recent = [...state.rawGroupBuffer]; 
         state.rawGroupBuffer = [];
@@ -2676,6 +3278,7 @@ const App: React.FC = () => {
           hasEws: state.hasEws,
           ewsId: state.ewsId,
           eonData: eonData, 
+          eonTaInfo: state.eonTaInfo ? { ...state.eonTaInfo } : undefined,
           tmcServiceInfo: { ...state.tmcServiceInfo }, 
           tmcMessages: [...state.tmcBuffer],
           tdcHistory: [...state.tdcHistoryBuffer],
@@ -2685,8 +3288,8 @@ const App: React.FC = () => {
           ertPlusTags: (Array.from(state.ertPlusTags.values()) as RtPlusTag[]).filter(t => t.text && t.text.length > 0).sort((a, b) => a.contentType - b.contentType),
           ps: currentPs, 
           longPs: renderRdsBuffer(state.lpsBuffer, true), 
-          rtA: renderRdsBuffer(state.rtBuffer0, false, true), 
-          rtB: renderRdsBuffer(state.rtBuffer1, false, true), 
+          rtA: renderRdsBuffer(state.rtIs2B ? state.rtBuffer0.slice(0, 32) : state.rtBuffer0, false, true), 
+          rtB: renderRdsBuffer(state.rtIs2B ? state.rtBuffer1.slice(0, 32) : state.rtBuffer1, false, true), 
           af: [...state.afSet], 
           afListHead: state.afListHead, 
           afHeaderCount: state.afHeaderCount,
@@ -2695,18 +3298,22 @@ const App: React.FC = () => {
           ber: (state.currentPi !== "----" && (now - state.piEstablishmentTime) >= 3000 && berHistoryRef.current.length >= 12) ? cBer : -1,
           groupCounts: { ...state.groupCounts }, 
           groupTotal: state.groupTotal, 
-          groupSequence: analyzerActiveRef.current ? [...state.groupSequence] : state.groupSequence.slice(-100), 
+          groupSequence: [...state.groupSequence], 
           recentGroups: recent, 
+          lpsMask: [...state.lpsMask],
           rtAMask: [...state.rtMask0],
           rtBMask: [...state.rtMask1],
           psHistory: [...state.psHistoryBuffer], 
           rtHistory: [...state.rtHistoryBuffer],
+          taHistory: [...state.taHistoryBuffer],
+          eonTaHistory: [...state.eonTaHistoryBuffer],
           isRecording: state.isRecording,
           bandscanEntries: [...state.bandscanEntries],
           isRawRecording: state.isRawRecording,
           rawRecordingBuffer: [...state.rawRecordingBuffer],
           rawRecordingPacketCount: state.rawRecordingPacketCount,
           isPlayingRaw: state.isPlayingRaw,
+          isRawSource: state.isRawSource,
           rawPlaybackCurrent: state.rawPlaybackCurrent,
           rawPlaybackTotal: state.rawPlaybackTotal,
           currentMetadata: lastApiDataRef.current ? {
@@ -2739,7 +3346,6 @@ const App: React.FC = () => {
 
   const connect = () => {
     if (!serverUrl) {
-      return;
     }
 
     packetCountRef.current = 0;
@@ -2997,7 +3603,7 @@ const App: React.FC = () => {
             const zip = new JSZip();
             for (const [pi, lines] of piGroups.entries()) {
                 const filename = `RDSExpert Raw Data - ${pi} - ${dateStr} (${timeStr}).rdse`;
-                zip.file(filename, lines.join('\n'));
+                zip.file(filename, lines.join('\r\n'));
             }
             zip.generateAsync({ type: 'blob' }).then(blob => {
                 const url = URL.createObjectURL(blob);
@@ -3009,7 +3615,7 @@ const App: React.FC = () => {
             });
         } else {
             const pi = piGroups.keys().next().value || decoderState.current.currentPi;
-            const content = decoderState.current.rawRecordingBuffer.join('\n');
+            const content = decoderState.current.rawRecordingBuffer.join('\r\n');
             const blob = new Blob([content], { type: 'text/plain' });
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
@@ -3030,13 +3636,13 @@ const App: React.FC = () => {
 
   const seekRawPlayback = (percent: number) => {
     const state = decoderState.current;
-    if (!state.isPlayingRaw || rawPlaybackLinesRef.current.length === 0) return;
     
     const newIndex = Math.floor(percent * rawPlaybackLinesRef.current.length);
     state.rawPlaybackCurrent = Math.min(newIndex, rawPlaybackLinesRef.current.length - 1);
     
     // Reset decoding state (copy from resetData logic but keep playback active)
     state.currentPi = "----";
+    state.isRawSource = true;
     state.piCandidate = "----";
     state.piCounter = 0;
     state.piEstablishmentTime = 0;
@@ -3044,13 +3650,16 @@ const App: React.FC = () => {
     state.psBuffer.fill('-');
     state.psMask.fill(false);
     state.lpsBuffer.fill(' ');
+    state.lpsMask.fill(false);
     state.ptynBuffer.fill(' ');
+    state.ptynMask.fill(false);
     state.rtBuffer0.fill(' ');
     state.rtBuffer1.fill(' ');
     state.rtMask0.fill(false);
     state.rtMask1.fill(false);
     state.rtCandidateString = "";
     state.rtStableSince = 0;
+    state.rtIs2B = false;
     state.afSet = [];
     state.afMethodAG3s.clear();
     state.afListHead = null;
@@ -3059,6 +3668,7 @@ const App: React.FC = () => {
     state.currentMethodBGroup = null;
     state.eonMap.clear();
     state.tmcBuffer = [];
+    state.lastTmcMessageId = null;
     state.tmcProviderBuffer.fill(' ');
     state.rtPlusTags.clear();
     state.tdcHistoryBuffer = [];
@@ -3072,6 +3682,7 @@ const App: React.FC = () => {
     state.odaList = [];
     state.hasRtPlus = false;
     state.hasEon = false;
+    state.eonTaInfo = undefined;
     state.hasTmc = false;
     state.hasTdc = false;
     state.hasIh = false;
@@ -3090,6 +3701,8 @@ const App: React.FC = () => {
     state.ptynAbFlag = false;
     state.tp = false;
     state.ta = false;
+    state.taInitialized = false;
+    state.eonTaInitialized = false;
     state.ms = false; 
     state.diStereo = false; 
     state.diArtificialHead = false;
@@ -3099,15 +3712,19 @@ const App: React.FC = () => {
     state.rtPlusOdaGroup = null;
     state.lastGroup0A3 = null;
     state.afType = 'Unknown';
-    state.tmcServiceInfo = { ltn: 0, sid: 0, afi: false, mode: 0, providerName: "[Identifying...]" };
+    state.tmcServiceInfo = { ltn: 0, sid: 0, providerName: "[Identifying...]" };
     state.groupCounts = {};
     state.groupTotal = 0;
     state.groupSequence = [];
     state.psHistoryBuffer = [];
     state.rtHistoryBuffer = [];
+    state.taHistoryBuffer = [];
+    state.eonTaHistoryBuffer = [];
     state.psCandidateString = "        ";
     state.psStableSince = 0;
     state.psValidationBuffer = "        ";
+    state.psConsecutiveBuffer.fill(' ');
+    state.nextExpectedAddress = 0;
     state.ptynCandidateString = "        ";
     state.ptynStableSince = 0;
     state.ptynValidationBuffer = "        ";
@@ -3132,20 +3749,38 @@ const App: React.FC = () => {
     stopRawPlayback();
     
     const text = await file.text();
-    const lines = text.split('\n')
-      .map(l => l.trim())
+    const rawLines = text.split('\n').map(l => l.trim());
+    let fileDate = "";
+    for (const l of rawLines) {
+      if (l.startsWith("#") || !l.match(/^[0-9A-F]/i)) {
+         const dMatch = l.match(/(\d{4})[-\/](\d{2})[-\/](\d{2})/);
+         if (dMatch) {
+            fileDate = dMatch[0];
+            break;
+         }
+      }
+    }
+    
+    const lines = rawLines
       .map(l => {
-        const match = l.match(/^([0-9A-F-]{4})\s+([0-9A-F-]{4})\s+([0-9A-F-]{4})\s+([0-9A-F-]{4})(?:\s+@(.*))?/i);
-        return match ? [match[1], match[2], match[3], match[4], match[5]] : null;
+        const match = l.match(/^(?:(.*?\d{2}:\d{2}:\d{2}.*?)\s+)?([0-9A-F-]{4})\s+([0-9A-F-]{4})\s+([0-9A-F-]{4})\s+([0-9A-F-]{4})(?:\s+@(.*))?/i);
+        if (match) {
+          let ts = (match[6] || match[1] || "").trim();
+          if (fileDate && ts && !ts.includes(fileDate.substring(0, 4))) {
+             ts = fileDate + " " + ts;
+          }
+          return [match[2], match[3], match[4], match[5], ts];
+        }
+        return null;
       })
       .filter(l => l !== null) as string[][];
     
-    if (lines.length === 0) return;
     
     rawPlaybackLinesRef.current = lines;
     resetData();
     
     decoderState.current.isPlayingRaw = true;
+    decoderState.current.isRawSource = true;
     decoderState.current.rawPlaybackTotal = lines.length;
     decoderState.current.rawPlaybackCurrent = 0;
     decoderState.current.isDirty = true;
@@ -3159,6 +3794,7 @@ const App: React.FC = () => {
         const state = decoderState.current;
         for (let i = 0; i < lines.length; i++) {
           const parts = lines[i];
+          const ts = parts[4];
           const hasError = parts.some(p => p.includes('-'));
           
           if (hasError) {
@@ -3171,10 +3807,15 @@ const App: React.FC = () => {
                 state.groupSequence.splice(0, 1000);
               }
             }
+            let errTime = state.lastTimeString || new Date().toLocaleTimeString('fr-FR');
+            if (ts && ts.match(/(\d{2}:\d{2}:\d{2})/)) {
+                errTime = ts.match(/(\d{2}:\d{2}:\d{2})/)![1];
+                state.lastTimeString = errTime;
+            }
             state.rawGroupBuffer.push({
               type: "--",
               blocks: [NaN, NaN, NaN, NaN],
-              time: new Date().toLocaleTimeString('fr-FR')
+              time: errTime
             });
             if (state.isRawRecording) {
               state.rawRecordingBuffer.push(`---- ---- ---- ---- ${getRawTimestamp()}`);
@@ -3185,7 +3826,6 @@ const App: React.FC = () => {
             const g2 = parseInt(parts[1], 16);
             const g3 = parseInt(parts[2], 16);
             const g4 = parseInt(parts[3], 16);
-            const ts = parts[4];
             
             decodeRdsGroup(g1, g2, g3, g4, ts);
             if (state.currentPi !== "----" && (virtualTime - state.piEstablishmentTime) >= 3000) {
@@ -3199,18 +3839,31 @@ const App: React.FC = () => {
           const cRtBuf = state.abFlag ? state.rtBuffer1 : state.rtBuffer0; 
           const cRtMsk = state.abFlag ? state.rtMask1 : state.rtMask0;
           const termIdx = cRtBuf.indexOf('\r'); 
-          let isRtC = termIdx !== -1 ? cRtMsk.slice(0, termIdx).every(Boolean) : cRtMsk.every(Boolean);
-          let rawRt = renderRdsBuffer(cRtBuf, false, true).replace(/ +$/, '');
+          let isRtC = termIdx !== -1 ? cRtMsk.slice(0, termIdx).every(Boolean) : cRtMsk.slice(0, state.rtIs2B ? 32 : 64).every(Boolean);
+          let rawRt = renderRdsBuffer(state.rtIs2B ? cRtBuf.slice(0, 32) : cRtBuf, false, true).replace(/ +$/, '');
           if (isRtC) {
-            if (rawRt !== state.rtCandidateString) { 
-              state.rtCandidateString = rawRt; 
-              state.rtStableSince = virtualTime; 
-            }
-            if (virtualTime - state.rtStableSince >= 2000) {
+            if (state.rtCandidateString === "") {
+              state.rtCandidateString = rawRt;
+              state.rtStableSince = virtualTime;
               const last = state.rtHistoryBuffer[0];
               if ((!last || last.text !== rawRt) && rawRt.trim().length > 0) { 
                 state.rtHistoryBuffer.unshift({ 
-                  time: new Date(virtualTime).toLocaleTimeString(), 
+                  time: ts && ts.match(/(\d{2}:\d{2}:\d{2})/) ? ts.match(/(\d{2}:\d{2}:\d{2})/)![1] : new Date(virtualTime).toLocaleTimeString(), 
+                  text: rawRt,
+                  isB: state.abFlag
+                }); 
+                if (state.rtHistoryBuffer.length > 200) {
+                  state.rtHistoryBuffer.pop();
+                }
+              }
+            } else if (rawRt !== state.rtCandidateString) { 
+              state.rtCandidateString = rawRt; 
+              state.rtStableSince = virtualTime; 
+            } else if (virtualTime - state.rtStableSince >= 2000) {
+              const last = state.rtHistoryBuffer[0];
+              if ((!last || last.text !== rawRt) && rawRt.trim().length > 0) { 
+                state.rtHistoryBuffer.unshift({ 
+                  time: ts && ts.match(/(\d{2}:\d{2}:\d{2})/) ? ts.match(/(\d{2}:\d{2}:\d{2})/)![1] : new Date(virtualTime).toLocaleTimeString(), 
                   text: rawRt,
                   isB: state.abFlag
                 }); 
@@ -3227,55 +3880,95 @@ const App: React.FC = () => {
         Date.now = originalDateNow;
       }
     } else {
-      playbackIntervalRef.current = setInterval(() => {
+      let lastTime = performance.now();
+      let remainder = 0;
+
+      const scheduleNextFrame = () => {
         const state = decoderState.current;
-        if (state.rawPlaybackCurrent >= lines.length) {
-          stopRawPlayback();
-          return;
-        }
         
-        const parts = lines[state.rawPlaybackCurrent];
-        const hasError = parts.some(p => p.includes('-'));
+        const now = performance.now();
+        const dt = now - lastTime;
+        lastTime = now;
         
-        if (hasError) {
-          if (state.currentPi !== "----" && (Date.now() - state.piEstablishmentTime) >= 3000) {
-            updateBer(true);
-            state.groupTotal++;
-            state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
-            state.groupSequence.push("--");
-            if (state.groupSequence.length > 3000) {
-              state.groupSequence.splice(0, 1000);
+        const packetsToProcessF = (dt / (87.6 / rawPlaybackSpeedRef.current)) + remainder;
+        const packetsToProcess = Math.floor(packetsToProcessF);
+        remainder = packetsToProcessF - packetsToProcess;
+        
+        let processed = 0;
+        
+        while (processed < packetsToProcess) {
+          if (state.rawPlaybackCurrent >= lines.length) {
+            if (rawPlaybackLoopRef.current) {
+              resetData();
+              state.rawPlaybackCurrent = 0;
+              state.isPlayingRaw = true;
+              state.isRawSource = true;
+              state.rawPlaybackTotal = lines.length;
+            } else {
+              stopRawPlayback();
             }
           }
-          state.rawGroupBuffer.push({
-            type: "--",
-            blocks: [NaN, NaN, NaN, NaN],
-            time: new Date().toLocaleTimeString('fr-FR')
-          });
-          if (state.isRawRecording) {
-            state.rawRecordingBuffer.push(`---- ---- ---- ---- ${getRawTimestamp()}`);
-            state.rawRecordingPacketCount++;
-          }
-        } else {
-          const g1 = parseInt(parts[0], 16);
-          const g2 = parseInt(parts[1], 16);
-          const g3 = parseInt(parts[2], 16);
-          const g4 = parseInt(parts[3], 16);
-          const ts = parts[4];
           
-          decodeRdsGroup(g1, g2, g3, g4, ts);
-          if (state.currentPi !== "----" && (Date.now() - state.piEstablishmentTime) >= 3000) {
-            updateBer(false);
+          if (state.rawPlaybackCurrent >= lines.length) break;
+          
+          const parts = lines[state.rawPlaybackCurrent];
+          const hasError = parts.some(p => p.includes('-'));
+          
+          if (hasError) {
+            if (state.currentPi !== "----" && (Date.now() - state.piEstablishmentTime) >= 3000) {
+              updateBer(true);
+              state.groupTotal++;
+              state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
+              state.groupSequence.push("--");
+              if (state.groupSequence.length > 3000) {
+                state.groupSequence.splice(0, 1000);
+              }
+            }
+            let errTime = state.lastTimeString || new Date().toLocaleTimeString('fr-FR');
+            const ts = parts[4];
+            if (ts && ts.match(/(\d{2}:\d{2}:\d{2})/)) {
+                errTime = ts.match(/(\d{2}:\d{2}:\d{2})/)![1];
+                state.lastTimeString = errTime;
+            }
+            state.rawGroupBuffer.push({
+              type: "--",
+              blocks: [NaN, NaN, NaN, NaN],
+              time: errTime
+            });
+            if (state.isRawRecording) {
+              state.rawRecordingBuffer.push(`---- ---- ---- ---- ${getRawTimestamp()}`);
+              state.rawRecordingPacketCount++;
+            }
+          } else {
+            const g1 = parseInt(parts[0], 16);
+            const g2 = parseInt(parts[1], 16);
+            const g3 = parseInt(parts[2], 16);
+            const g4 = parseInt(parts[3], 16);
+            const ts = parts[4];
+            
+            decodeRdsGroup(g1, g2, g3, g4, ts);
+            if (state.currentPi !== "----" && (Date.now() - state.piEstablishmentTime) >= 3000) {
+              updateBer(false);
+            }
           }
+          
+          state.rawPlaybackCurrent++;
+          processed++;
         }
         
-        state.rawPlaybackCurrent++;
-        state.isDirty = true;
-      }, 88);
+        if (processed > 0) {
+          state.isDirty = true;
+        }
+        playbackIntervalRef.current = setTimeout(scheduleNextFrame, 16);
+      };
+
+      lastTime = performance.now();
+      playbackIntervalRef.current = setTimeout(scheduleNextFrame, 16);
     }
   };
 
-  const handlePlayRawClick = () => {
+  const handlePlayRawClick = (e: React.MouseEvent) => {
+    e.stopPropagation();
     setShowRawMenu((prev) => !prev);
   };
 
@@ -3286,6 +3979,15 @@ const App: React.FC = () => {
     }
     e.target.value = '';
   };
+
+  const handleEonHover = useCallback(() => {
+    const state = decoderState.current;
+    if (state.eonTaInfo && (state.eonTaInfo.isBlinking || !state.eonTaInfo.hasBeenSeen)) {
+      state.eonTaInfo.hasBeenSeen = true;
+      state.eonTaInfo.isBlinking = false;
+      state.isDirty = true;
+    }
+  }, []);
 
   return (
     <div className="min-h-screen bg-[#0f172a] text-slate-300 font-sans selection:bg-blue-500/30">
@@ -3337,6 +4039,7 @@ const App: React.FC = () => {
                   <button 
                     onClick={handlePlayRawClick}
                     className={`bg-slate-900/50 border rounded px-2 py-1.5 md:px-3 md:py-2 flex items-center justify-center gap-2 transition-all w-full h-full text-[10px] md:text-xs font-bold uppercase ${isDraggingOverRaw ? 'border-blue-500 bg-blue-500/20 text-blue-400 scale-105 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'border-slate-800 text-slate-500 hover:text-blue-400 hover:border-blue-500/50'}`}
+                    title='This feature allows to play back an RDS recording. Select "Normal Playback" for a progressive data display (like real-time) or "Instant Playback" for an immediate display.'
                   >
                     <i className={`fa-solid ${isDraggingOverRaw ? 'fa-upload animate-bounce' : 'fa-play'}`}></i>
                     <span>{droppedFile ? 'CHOOSE PLAYBACK' : (isDraggingOverRaw ? 'DROP FILE' : 'RAW DATA')}</span>
@@ -3431,7 +4134,7 @@ const App: React.FC = () => {
         <div className="space-y-6">
            {rdsData.isPlayingRaw && (
              <div 
-               className="w-full bg-green-950/20 h-8 rounded-lg flex items-center px-4 border border-green-900/30 overflow-hidden relative cursor-pointer group/progress"
+               className="w-full bg-green-950/20 h-8 rounded-lg flex items-center px-4 border border-green-900/30 relative cursor-pointer group/progress"
                onClick={(e) => {
                  const rect = e.currentTarget.getBoundingClientRect();
                  const x = e.clientX - rect.left;
@@ -3439,14 +4142,62 @@ const App: React.FC = () => {
                  seekRawPlayback(percent);
                }}
              >
-               <div 
-                 className="absolute inset-y-0 left-0 bg-green-500/50 transition-all duration-100" 
-                 style={{ width: `${(rdsData.rawPlaybackCurrent / rdsData.rawPlaybackTotal) * 100}%` }}
-               ></div>
-               <div className="relative z-10 w-full flex justify-end items-center gap-3">
+               <div className="absolute inset-0 rounded-lg overflow-hidden pointer-events-none">
+                 <div 
+                   className="absolute inset-y-0 left-0 bg-green-500/50 transition-all duration-100"
+                   style={{ width: `${(rdsData.rawPlaybackCurrent / rdsData.rawPlaybackTotal) * 100}%` }}
+                 ></div>
+               </div>
+               <div className="relative z-50 w-full flex justify-end items-center gap-3">
                  <span className="text-xs font-mono text-white font-bold">
-                   {rdsData.rawPlaybackCurrent}/{rdsData.rawPlaybackTotal}
+                   {rdsData.rawPlaybackCurrent}/{rdsData.rawPlaybackTotal} (x{rawPlaybackSpeed.toFixed(2)})
                  </span>
+                 
+                 <div className="relative flex items-center group/speed">
+                   <button 
+                     onClick={(e) => {
+                       e.stopPropagation();
+                       setShowSpeedMenu(prev => !prev);
+                     }}
+                     className="w-5 h-5 flex items-center justify-center bg-blue-600 hover:bg-blue-500 text-white rounded-full transition-colors shadow-lg"
+                     title="Playback speed"
+                   >
+                     <i className="fa-solid fa-gauge text-[10px]"></i>
+                   </button>
+                   {showSpeedMenu && (
+                     <div className="absolute top-full mt-2 right-0 bg-slate-800 border border-slate-700 rounded shadow-lg z-50 flex flex-col overflow-hidden w-24">
+                       {[0.5, 1, 2, 3, 4, 5, 10].map((s) => (
+                         <button
+                           key={s}
+                           onClick={(e) => {
+                             e.stopPropagation();
+                             setRawPlaybackSpeed(s);
+                             rawPlaybackSpeedRef.current = s;
+                             localStorage.setItem('rdsExpertPlaybackSpeed', s.toString());
+                             setShowSpeedMenu(false);
+                           }}
+                           className={`px-3 py-1.5 text-left text-[10px] md:text-xs font-bold transition-colors ${rawPlaybackSpeed === s ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-blue-400'}`}
+                         >
+                           x{s.toFixed(2)}
+                         </button>
+                       ))}
+                     </div>
+                   )}
+                 </div>
+
+                 <button 
+                   onClick={(e) => {
+                     e.stopPropagation();
+                     const nextLoop = !rawPlaybackLoop;
+                     setRawPlaybackLoop(nextLoop);
+                     rawPlaybackLoopRef.current = nextLoop;
+                   }}
+                   className={`w-5 h-5 flex items-center justify-center text-white rounded-full transition-colors shadow-lg ${rawPlaybackLoop ? 'bg-green-600 hover:bg-green-500' : 'bg-slate-600 hover:bg-slate-500'}`}
+                   title={rawPlaybackLoop ? "Loop playback: ON" : "Loop playback: OFF"}
+                 >
+                   <i className="fa-solid fa-repeat text-[10px]"></i>
+                 </button>
+
                  <button 
                    onClick={(e) => { e.stopPropagation(); stopRawPlayback(); }}
                    className="w-5 h-5 flex items-center justify-center bg-red-600 hover:bg-red-500 text-white rounded-full transition-colors shadow-lg"
@@ -3464,10 +4215,12 @@ const App: React.FC = () => {
              onIhClick={() => setShowIhHistory(true)}
              onRpClick={() => setShowRpHistory(true)}
              onErtClick={() => setShowErtHistory(true)}
+             onTaClick={() => setShowTaHistory(true)}
              onSetRawRecording={setRawRecording}
+             onEonHover={handleEonHover}
            />
            <HistoryControls data={rdsData} onSetRecording={setRecording} serverUrl={serverUrl} />
-           <InfoGrid data={rdsData} />
+           <InfoGrid data={rdsData} onEonTaHistoryClick={() => setShowEonTaHistory(true)} />
            <GroupAnalyzer data={rdsData} active={analyzerActive} onToggle={toggleAnalyzer} onReset={resetAnalyzer} />
            <TmcViewer 
               data={rdsData} 
@@ -3498,6 +4251,64 @@ const App: React.FC = () => {
            </div>
         </div>
       </div>
+
+      {showTaHistory && (
+        <HistoryViewer 
+          title="TA HISTORY (TRAFFIC ANNOUNCEMENT) [0A / 0B]"
+          onClose={() => setShowTaHistory(false)}
+          data={rdsData.taHistory}
+          emptyMessage="No use of the TA flag detected so far."
+          getCopyText={(item) => `[ACTIVATED: ${item.startTime}] [DEACTIVATED: ${item.endTime || "Currently active..."}] [DURATION: ${calculateTimeDiff(item.startTime, item.endTime)}]`}
+          renderHeader={() => (
+            <tr className="border-b border-slate-700 text-slate-500 bg-slate-900 sticky top-0 z-10">
+              <th className="p-3 w-40">Activation</th>
+              <th className="p-3 w-40">Deactivation</th>
+              <th className="p-3 w-32">Duration</th>
+            </tr>
+          )}
+          renderRow={(item, i) => (
+            <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+              <td className="p-3 text-slate-400 border-r border-slate-800/50 align-top text-center">{item.startTime}</td>
+              <td className={`p-3 border-r border-slate-800/50 align-top text-center ${item.endTime ? 'text-slate-400' : 'text-blue-400 font-bold'}`}>
+                {item.endTime || "Currently active..."}
+              </td>
+              <td className="p-3 text-slate-400 align-top text-center font-mono">
+                {calculateTimeDiff(item.startTime, item.endTime)}
+              </td>
+            </tr>
+          )}
+        />
+      )}
+
+      {showEonTaHistory && (
+        <HistoryViewer 
+          title="EON TA HISTORY [14B]"
+          onClose={() => setShowEonTaHistory(false)}
+          data={rdsData.eonTaHistory}
+          emptyMessage="No EON TA flags detected so far."
+          getCopyText={(item) => `[ACTIVATED: ${item.startTime}] [PI: ${item.pi}] [DEACTIVATED: ${item.endTime || "Currently active..."}] [DURATION: ${calculateTimeDiff(item.startTime, item.endTime)}]`}
+          renderHeader={() => (
+            <tr className="border-b border-slate-700 text-slate-500 bg-slate-900 sticky top-0 z-10">
+              <th className="p-3 w-40">Activation</th>
+              <th className="p-3 w-24">Target PI</th>
+              <th className="p-3 w-40">Deactivation</th>
+              <th className="p-3 w-32">Duration</th>
+            </tr>
+          )}
+          renderRow={(item, i) => (
+            <tr key={i} className="border-b border-slate-800/50 hover:bg-slate-800/30 transition-colors">
+              <td className="p-3 text-slate-400 border-r border-slate-800/50 align-top text-center">{item.startTime}</td>
+              <td className="p-3 text-blue-400 border-r border-slate-800/50 align-top text-center font-bold font-mono">{item.pi}</td>
+              <td className={`p-3 border-r border-slate-800/50 align-top text-center ${item.endTime ? 'text-slate-400' : 'text-blue-400 font-bold'}`}>
+                {item.endTime || "Currently active..."}
+              </td>
+              <td className="p-3 text-slate-400 align-top text-center font-mono">
+                {calculateTimeDiff(item.startTime, item.endTime)}
+              </td>
+            </tr>
+          )}
+        />
+      )}
 
       {showTdcHistory && (
         <HistoryViewer 
@@ -3663,8 +4474,8 @@ const App: React.FC = () => {
   );
 };
 
-const SecurityErrorModal: React.FC<{ onClose: () => void; serverUrl: string }> = ({ onClose, serverUrl }) => (
-  <div className="fixed inset-0 z-[9999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
+const SecurityErrorModal: React.FC<{ onClose: () => void; serverUrl: string }> = ({ onClose, serverUrl }) => createPortal(
+  <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
     <div className="bg-slate-900 border-2 border-red-500/50 rounded-lg shadow-2xl w-full max-w-lg flex flex-col overflow-hidden relative">
       <div className="p-6 text-center space-y-4">
         <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mx-auto border border-red-500/30">
@@ -3696,7 +4507,8 @@ const SecurityErrorModal: React.FC<{ onClose: () => void; serverUrl: string }> =
         </a>
       </div>
     </div>
-  </div>
+  </div>,
+  document.body
 );
 
 export default App;

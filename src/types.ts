@@ -1,3 +1,15 @@
+export interface EonTaInfo {
+  targetPi: string;
+  time: string;
+  detectedAtTimestamp: number;
+  stoppedAtTimestamp?: number;
+  lastActiveTimestamp?: number;
+  isActive: boolean;
+  isBlinking: boolean;
+  blinkMode?: 'fast' | 'slow';
+  hasBeenSeen: boolean;
+}
+
 export interface RdsData {
   pi: string;          // PI - Program Identification (e.g., F204)
   ps: string;          // PS - Program Service (e.g., F I P)
@@ -44,6 +56,7 @@ export interface RdsData {
   utcTime: string;     // UTC Clock Time (Group 4A)
   ctTimeError: string | null; // Difference between CT and computer time
   eonData: Record<string, EonNetwork>; // EON Data keyed by PI
+  eonTaInfo?: EonTaInfo; // EON TA detection info from Group 14B
   tmcServiceInfo: TmcServiceInfo; // Service Provider Info (SID, LTN, etc.)
   tmcMessages: TmcMessage[]; // Buffer of decoded TMC messages
   tdcHistory: TdcHistoryItem[]; // Buffer of decoded TDC messages
@@ -61,12 +74,15 @@ export interface RdsData {
   recentGroups: RawGroup[]; // Buffer of raw groups received since last frame
   
   // RadioText Decoding Masks
+  lpsMask: boolean[];
   rtAMask: boolean[];
   rtBMask: boolean[];
 
   // History
   psHistory: PsHistoryItem[];
   rtHistory: RtHistoryItem[];
+  taHistory: TaHistoryItem[];
+  eonTaHistory: EonTaHistoryItem[];
 
   // Bandscan
   isRecording: boolean;
@@ -80,8 +96,10 @@ export interface RdsData {
 
   // Raw Playback
   isPlayingRaw: boolean;
+  isRawSource: boolean;
   rawPlaybackCurrent: number;
   rawPlaybackTotal: number;
+  tmcActiveMultiGroup: Record<number, number>; // maps CI (dp) to TMC message ID
 }
 
 export interface BandscanEntry {
@@ -128,6 +146,17 @@ export interface RtHistoryItem {
     isB?: boolean;
 }
 
+export interface TaHistoryItem {
+    startTime: string;
+    endTime?: string;
+}
+
+export interface EonTaHistoryItem {
+    startTime: string;
+    endTime?: string;
+    pi: string;
+}
+
 export interface TdcHistoryItem {
     time: string;
     text: string;
@@ -169,6 +198,10 @@ export interface EonNetwork {
   pi: string;
   ps: string;
   psBuffer: string[]; // Internal use for building PS
+  psConsecutiveBuffer?: string[];
+  nextExpectedVariant?: number;
+  psValidationBuffer?: string;
+  consecutiveCount?: number;
   tp: boolean;
   ta: boolean;
   pty: number;
@@ -178,6 +211,7 @@ export interface EonNetwork {
   mappedFreqs: string[]; // Format "FreqA -> FreqB"
   lastUpdate: number;
   pendingLfmf?: boolean;
+  psHistory?: { time: string; ps: string }[];
 }
 
 export interface RtPlusTag {
@@ -192,9 +226,15 @@ export interface RtPlusTag {
 export interface TmcServiceInfo {
     ltn: number; // Location Table Number
     sid: number; // Service Identifier
-    afi: boolean; // Alternative Frequency Indicator
-    mode: number; // Mode
     providerName: string; // Placeholder for Provider Name
+    tuningInfo?: Record<string, number[]>; // PI -> array of AF frequencies
+    cid?: string; // Country ID
+    gap?: number; // Gap parameters
+    mgs?: number; // Message Geographical Scope
+    ltecc?: number; // Extended Country Code
+    isEncrypted?: boolean; // Encryption status
+    encId?: number; // Encryption ID
+    otherNetworks?: Record<string, { sid?: number; ltn?: number; mgs?: number }>; // Other networks info
 }
 
 export interface TmcMessage {
@@ -209,6 +249,7 @@ export interface TmcMessage {
     locationCode: number; // Location ID
     extent: number;     // Extent (0-7)
     durationCode: number; // Duration Code (0-7)
+    durationType: string; // "Dynamic", "Longer Lasting"
     direction: boolean; // 0=Positive, 1=Negative
     diversion: boolean; // Diversion advice bit
     
@@ -217,7 +258,11 @@ export interface TmcMessage {
     urgency: string;    // e.g. "Normal", "Urgent"
     nature: string;     // e.g. "Info", "Forecast"
     durationLabel: string; // e.g. "Longer Lasting", "30 mins"
-    updateCount: number; // Number of times this message has been repeated/updated
+    updateCount: number;
+    lastUpdatedTime?: string;
+    lastUpdatedTimestamp?: number;
+    lastCountedTimestamp?: number;
+    lastGroupTotal?: number;
     
     // System Msg Fields
     rawBlock2?: string;

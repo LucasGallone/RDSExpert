@@ -1,6 +1,7 @@
 declare const L: any; // Leaflet loaded via CDN
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { TmcMessage, TmcServiceInfo, TmcResolvedLocation } from '../types';
 import { ECC_PI_TO_TMC_CID } from '../constants';
 import { resolveLocations, getCacheSize, clearLocationCache } from '../services/tmcLocationService';
@@ -283,7 +284,7 @@ export const TmcMap: React.FC<TmcMapProps> = ({
           </div>
           <div style="font-size:11px;color:#94a3b8;line-height:1.5;">
             ${escapeHtml(msg.nature)} · ${escapeHtml(msg.urgency)} · ${escapeHtml(msg.durationLabel)}<br/>
-            Direction: ${msg.direction ? 'Negative (−)' : 'Positive (+)'}${msg.extent > 0 ? ` · Extent: ${msg.extent}` : ''}<br/>
+            Direction: ${msg.direction ? 'Positive (+)' : 'Negative (−)'}${msg.extent > 0 ? ` · Extent: ${msg.extent}` : ''}<br/>
             Received: ${escapeHtml(msg.receivedTime)}${msg.diversion ? ' · <span style="color:#f59e0b;">⚠ Diversion</span>' : ''}
           </div>
         </div>`;
@@ -338,8 +339,8 @@ export const TmcMap: React.FC<TmcMapProps> = ({
 
   if (!isOpen) return null;
 
-  return (
-    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/80 backdrop-blur-sm p-4">
       <div className="bg-slate-900 border border-slate-700 rounded-lg shadow-2xl w-full h-full max-w-6xl max-h-[90vh] flex flex-col overflow-hidden">
 
         {/* Header */}
@@ -447,7 +448,8 @@ export const TmcMap: React.FC<TmcMapProps> = ({
         {/* Map container */}
         <div ref={mapContainerRef} className="flex-1 min-h-0" />
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 

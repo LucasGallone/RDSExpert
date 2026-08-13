@@ -10,17 +10,32 @@ interface LcdDisplayProps {
   onIhClick?: () => void;
   onRpClick?: () => void;
   onErtClick?: () => void;
+  onTaClick?: () => void;
   onSetRawRecording: (val: boolean) => void;
+  onEonHover?: () => void;
 }
 
-type UnderscoreMode = 'OFF' | 'RT_PROGRESSIVE' | 'ALL' | 'PS_ONLY' | 'RT_ONLY';
+export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClick, onIhClick, onRpClick, onErtClick, onTaClick, onSetRawRecording, onEonHover }) => {
+  const [psUnderscore, setPsUnderscore] = useState(() => localStorage.getItem('rds_ps_underscore') === 'true');
+  const [rtUnderscore, setRtUnderscore] = useState(() => localStorage.getItem('rds_rt_underscore') === 'true');
+  const [rtProgressive, setRtProgressive] = useState(() => localStorage.getItem('rds_rt_progressive') === 'true');
+  const [lpsUnderscore, setLpsUnderscore] = useState(() => localStorage.getItem('rds_lps_underscore') === 'true');
+  const [lpsProgressive, setLpsProgressive] = useState(() => localStorage.getItem('rds_lps_progressive') === 'true');
+  const [showUnderscoreMenu, setShowUnderscoreMenu] = useState(false);
 
-export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClick, onIhClick, onRpClick, onErtClick, onSetRawRecording }) => {
-  const [underscoreMode, setUnderscoreMode] = useState<UnderscoreMode>(() => (localStorage.getItem('rds_underscore_mode') as UnderscoreMode) || 'OFF');
-  
   useEffect(() => {
-    localStorage.setItem('rds_underscore_mode', underscoreMode);
-  }, [underscoreMode]);
+    localStorage.setItem('rds_ps_underscore', psUnderscore.toString());
+    localStorage.setItem('rds_rt_underscore', rtUnderscore.toString());
+    localStorage.setItem('rds_rt_progressive', rtProgressive.toString());
+    localStorage.setItem('rds_lps_underscore', lpsUnderscore.toString());
+    localStorage.setItem('rds_lps_progressive', lpsProgressive.toString());
+  }, [psUnderscore, rtUnderscore, rtProgressive, lpsUnderscore, lpsProgressive]);
+
+  useEffect(() => {
+    const handleClickOutside = () => setShowUnderscoreMenu(false);
+    document.addEventListener('click', handleClickOutside);
+    return () => document.removeEventListener('click', handleClickOutside);
+  }, []);
   
   // State for PI Callsign Tooltip
   const [showPiTooltip, setShowPiTooltip] = useState(false);
@@ -65,39 +80,17 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
 
   // Cycle through modes: 
   // OFF -> RT_PROGRESSIVE -> ALL -> PS_ONLY -> RT_ONLY -> OFF
-  const cycleMode = () => {
-    setUnderscoreMode(prev => {
-      if (prev === 'OFF') return 'RT_PROGRESSIVE';
-      if (prev === 'RT_PROGRESSIVE') return 'ALL';
-      if (prev === 'ALL') return 'PS_ONLY';
-      if (prev === 'PS_ONLY') return 'RT_ONLY';
-      return 'OFF';
-    });
-  };
-
-  const getModeLabel = () => {
-    switch (underscoreMode) {
-      case 'RT_PROGRESSIVE': return 'PROGRESSIVE UNDERSCORES ON RT';
-      case 'ALL': return 'UNDERSCORES ON PS & RT';
-      case 'PS_ONLY': return 'UNDERSCORES ON PS ONLY';
-      case 'RT_ONLY': return 'UNDERSCORES ON RT ONLY';
-      default: return 'UNDERSCORES OFF';
-    }
-  };
-
   const isRaw = (type: 'rt' | 'lps' | 'ps' | 'ptyn') => {
     if (type === 'ptyn') return false;
-    if (underscoreMode === 'ALL') return true;
-    if (underscoreMode === 'OFF') return false;
-    if (underscoreMode === 'PS_ONLY') return type === 'ps' || type === 'lps';
-    if (underscoreMode === 'RT_ONLY') return type === 'rt';
-    if (underscoreMode === 'RT_PROGRESSIVE') return false; // Handled specially
+    if (type === 'ps') return psUnderscore;
+    if (type === 'lps') return lpsUnderscore;
+    if (type === 'rt') return rtUnderscore;
     return false;
   };
 
   const RenderEnhancedText = ({ text, type, mask }: { text: string, type: 'rt' | 'lps' | 'ps' | 'ptyn', mask?: boolean[] }) => {
       const rawMode = isRaw(type);
-      const progressiveMode = (underscoreMode === 'RT_PROGRESSIVE' && type === 'rt');
+      const progressiveMode = (rtProgressive && type === 'rt') || (lpsProgressive && type === 'lps');
       
       // Detect if the current RT line is a 32-character version (Group 2B) to limit underscores
       const is32CharRT = type === 'rt' && (
@@ -151,21 +144,22 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
                  );
              }
              
+             const isLpsActuallyActive = data.longPs && data.longPs.trim().length > 0;
+             const shouldHideUnderscore = ((type === 'lps' || type === 'rt') && controlFound) || 
+                                          (type === 'lps' && !isLpsActuallyActive) || 
+                                          (is32CharRT && index >= 32);
+
              // Progressive Logic (priority): Show underscore only if NOT decoded
              if (progressiveMode) {
                  if (mask && !mask[index]) {
-                     return <span key={index}>_</span>;
+                     return <span key={index}>{shouldHideUnderscore ? ' ' : '_'}</span>;
                  }
                  return <span key={index}>{char}</span>;
              }
              
              // Standard Raw Logic: Show underscore for any space
              if (rawMode && char === ' ') {
-                 // Logic for Long PS & RT: If the <0D> code was found previously in the string, 
-                 // we render a standard space instead of an underscore.
-                 // Also for LPS: if not active (no real data received), show spaces.
-                 const isLpsActuallyActive = data.longPs && data.longPs.trim().length > 0;
-                 if (((type === 'lps' || type === 'rt') && controlFound) || (type === 'lps' && !isLpsActuallyActive) || (is32CharRT && index >= 32)) {
+                 if (shouldHideUnderscore) {
                      return <span key={index}> </span>;
                  }
                  return <span key={index}>_</span>;
@@ -321,7 +315,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
   };
 
   return (
-    <div className="bg-[#0f172a] border-4 border-slate-700 rounded-lg p-6 shadow-[0_0_20px_rgba(15,23,42,0.8)] relative overflow-hidden group">
+    <div className="bg-[#0f172a] border-4 border-slate-700 rounded-lg p-6 shadow-[0_0_20px_rgba(15,23,42,0.8)] relative group">
       {/* Screen Glare Overlay */}
       <div className="absolute top-0 left-0 w-full h-full bg-gradient-to-br from-white/5 to-transparent pointer-events-none z-10"></div>
       
@@ -341,12 +335,60 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>
             RESET DATA
           </button>
-          <button 
-            onClick={cycleMode}
-            className={`px-2 py-1 text-[10px] font-bold border rounded uppercase transition-colors min-w-[100px] text-center ${underscoreMode !== 'OFF' ? 'bg-blue-600 text-white border-blue-500' : 'bg-transparent text-slate-500 border-slate-700 hover:border-slate-500'}`}
-          >
-            {getModeLabel()}
-          </button>
+          <div className="relative">
+            <button 
+              onClick={(e) => {
+                e.stopPropagation();
+                setShowUnderscoreMenu(prev => !prev);
+              }}
+              className={`px-2 py-1 text-[10px] font-bold border rounded uppercase transition-colors min-w-[100px] text-center ${(psUnderscore || rtUnderscore || rtProgressive || lpsUnderscore || lpsProgressive) ? 'bg-blue-600 text-white border-blue-500' : 'bg-transparent text-slate-500 border-slate-700 hover:border-slate-500'}`}
+            >
+              {(psUnderscore || rtUnderscore || rtProgressive || lpsUnderscore || lpsProgressive) ? 'UNDERSCORES ON' : 'UNDERSCORES OFF'}
+            </button>
+            {showUnderscoreMenu && (
+              <div className="absolute top-full mt-2 right-0 bg-slate-800 border border-slate-700 rounded shadow-lg z-50 flex flex-col overflow-hidden w-[280px]" onClick={e => e.stopPropagation()}>
+                <div className="px-3 py-2 flex flex-col gap-2 hover:bg-slate-700/50 transition-colors">
+                  <div className="text-[10px] md:text-xs font-bold text-slate-300">UNDERSCORES ON PS</div>
+                  <div className="flex bg-slate-900 rounded border border-slate-600 text-[10px] font-bold overflow-hidden">
+                    <button 
+                      onClick={() => setPsUnderscore(false)}
+                      className={`flex-1 py-1 text-center ${!psUnderscore ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>OFF</button>
+                    <button 
+                      onClick={() => setPsUnderscore(true)}
+                      className={`flex-1 py-1 text-center ${psUnderscore ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>ON</button>
+                  </div>
+                </div>
+                <div className="px-3 py-2 flex flex-col gap-2 hover:bg-slate-700/50 transition-colors border-t border-slate-700/50">
+                  <div className="text-[10px] md:text-xs font-bold text-slate-300">UNDERSCORES ON RT</div>
+                  <div className="flex bg-slate-900 rounded border border-slate-600 text-[10px] font-bold overflow-hidden">
+                    <button 
+                      onClick={() => { setRtProgressive(false); setRtUnderscore(false); }}
+                      className={`flex-1 py-1 text-center ${!(rtUnderscore || rtProgressive) ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>OFF</button>
+                    <button 
+                      onClick={() => { setRtProgressive(true); setRtUnderscore(false); }}
+                      className={`flex-1 py-1 text-center ${rtProgressive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>PROGRESSIVE</button>
+                    <button 
+                      onClick={() => { setRtUnderscore(true); setRtProgressive(false); }}
+                      className={`flex-1 py-1 text-center ${rtUnderscore ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>PERMANENT</button>
+                  </div>
+                </div>
+                <div className="px-3 py-2 flex flex-col gap-2 hover:bg-slate-700/50 transition-colors border-t border-slate-700/50">
+                  <div className="text-[10px] md:text-xs font-bold text-slate-300">UNDERSCORES ON LONG PS</div>
+                  <div className="flex bg-slate-900 rounded border border-slate-600 text-[10px] font-bold overflow-hidden">
+                    <button 
+                      onClick={() => { setLpsProgressive(false); setLpsUnderscore(false); }}
+                      className={`flex-1 py-1 text-center ${!(lpsUnderscore || lpsProgressive) ? 'bg-slate-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>OFF</button>
+                    <button 
+                      onClick={() => { setLpsProgressive(true); setLpsUnderscore(false); }}
+                      className={`flex-1 py-1 text-center ${lpsProgressive ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>PROGRESSIVE</button>
+                    <button 
+                      onClick={() => { setLpsUnderscore(true); setLpsProgressive(false); }}
+                      className={`flex-1 py-1 text-center ${lpsUnderscore ? 'bg-blue-600 text-white' : 'text-slate-400 hover:bg-slate-800'}`}>PERMANENT</button>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
       </div>
 
       {/* Main Row: PI | PS | BER - STRICTLY ONE ROW */}
@@ -356,7 +398,13 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
         <div className="flex flex-col items-start shrink-0 justify-end h-full">
            <div className="flex space-x-2 mb-6">
              <FlagBadge active={data.tp} label="TP" />
-             <FlagBadge active={data.ta} label="TA" alert />
+             <FlagBadge 
+                active={data.ta} 
+                label="TA" 
+                alert 
+                onClick={onTaClick}
+                tooltip="Click to view the TA history"
+             />
              <FlagBadge active={data.ms} label="MUSIC" />
            </div>
 
@@ -464,7 +512,15 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
         <div className="order-1 md:order-3 shrink-0 flex items-center justify-center gap-2 bg-slate-900/40 rounded p-2 border border-slate-800/50">
             <FlagBadge active={data.hasOda} label="ODA" color="purple" tooltip={odaTooltip} />
             <FlagBadge active={data.hasRtPlus} label="RT+" color="green" />
-            <FlagBadge active={data.hasEon} label="EON" color="yellow" />
+            <FlagBadge 
+              active={data.hasEon} 
+              label="EON" 
+              color="yellow" 
+              blinking={data.eonTaInfo?.isBlinking}
+              blinkMode={data.eonTaInfo?.blinkMode}
+              tooltip={data.eonTaInfo ? `EON TA enabled on Group 14B\n-> PI ${data.eonTaInfo.targetPi} at ${data.eonTaInfo.time}` : undefined}
+              onHover={onEonHover}
+            />
             <FlagBadge active={data.hasTmc} label="TMC" alert />
             {/* TDC & IH Indicators - Visible on mobile only here */}
             <div className="md:hidden flex gap-2">
@@ -516,7 +572,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
              <div className="flex-1 px-3 overflow-x-auto no-scrollbar">
                {hasLongPs ? (
                   <span className="font-mono text-lg text-white tracking-wide whitespace-pre block shrink-0">
-                    <RenderEnhancedText text={data.longPs} type="lps" />
+                    <RenderEnhancedText text={data.longPs} type="lps" mask={data.lpsMask} />
                   </span>
                ) : (
                  <span className="font-mono text-slate-600 text-sm italic">No Data</span>
@@ -596,7 +652,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
           >
               <span className="text-[10px] font-bold text-slate-500 uppercase mr-2">UTC CT</span>
               <span className={`font-mono text-lg tracking-wide ${data.utcTime ? 'text-white' : 'text-slate-600'}`}>{data.utcTime || "--/--/-- --:--"}</span>
-              {showUtcTooltip && data.utcTime && data.ctTimeError && (
+              {showUtcTooltip && data.utcTime && data.ctTimeError && !data.isRawSource && (
                 <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-4 py-2 bg-slate-800 text-white text-sm font-mono rounded border border-slate-600 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-50 animate-in fade-in zoom-in-95 duration-200 whitespace-nowrap">
                    {data.ctTimeError === "No time error observed." ? data.ctTimeError : `Time Error: ${data.ctTimeError}`}
                    <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-600"></div>
@@ -637,24 +693,22 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
   );
 };
 
-const FlagBadge: React.FC<{ active: boolean; label: string; alert?: boolean; color?: 'green' | 'yellow' | 'purple' | 'blue' | 'emerald' | 'orange'; tooltip?: string; onClick?: () => void }> = ({ active, label, alert, color, tooltip, onClick }) => {
-  const [showTooltip, setShowTooltip] = useState(false);
-  const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+const FlagBadge: React.FC<{ 
+  active: boolean; 
+  label: string; 
+  alert?: boolean; 
+  color?: 'green' | 'yellow' | 'purple' | 'blue' | 'emerald' | 'orange'; 
+  tooltip?: string; 
+  onClick?: () => void;
+  blinking?: boolean;
+  blinkMode?: 'fast' | 'slow';
+  onHover?: () => void;
+}> = ({ active, label, alert, color, tooltip, onClick, blinking, blinkMode, onHover }) => {
 
   const handleMouseEnter = () => {
-    if (tooltip && active) {
-      timerRef.current = setTimeout(() => {
-        setShowTooltip(true);
-      }, 200);
+    if (onHover) {
+      onHover();
     }
-  };
-
-  const handleMouseLeave = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setShowTooltip(false);
   };
 
   let activeClass = "text-blue-300 bg-blue-900/20 border-blue-500/50 shadow-[0_0_8px_rgba(59,130,246,0.3)]";
@@ -675,22 +729,24 @@ const FlagBadge: React.FC<{ active: boolean; label: string; alert?: boolean; col
       activeClass = "text-orange-400 bg-orange-900/20 border-orange-500/50 shadow-[0_0_10px_rgba(249,115,22,0.6)] cursor-pointer hover:bg-orange-500/30";
   }
   
+  if (blinking) {
+      if (blinkMode === 'slow') {
+        activeClass += " animate-eon-blink-slow";
+      } else {
+        activeClass += " animate-eon-blink-fast";
+      }
+  }
+  
   const inactiveClass = "text-slate-700 bg-slate-900/50 border-slate-800 opacity-50";
 
   return (
-    <div className="relative inline-block" onMouseEnter={handleMouseEnter} onMouseLeave={handleMouseLeave}>
+    <div className="relative inline-block" onMouseEnter={handleMouseEnter} title={tooltip}>
         <span 
-          onClick={active ? onClick : undefined}
-          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${active ? activeClass : inactiveClass} transition-all duration-300 ${active && onClick ? 'cursor-pointer' : 'cursor-default'}`}
+          onClick={onClick}
+          className={`text-[10px] font-bold px-2 py-0.5 rounded border ${active ? activeClass : inactiveClass} transition-all duration-300 ${onClick ? 'cursor-pointer hover:bg-slate-800' : 'cursor-default'}`}
         >
           {label}
         </span>
-        {showTooltip && (
-            <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-3 py-1.5 bg-slate-800 text-white text-xs font-mono rounded border border-slate-600 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-50 animate-in fade-in zoom-in-95 duration-200 whitespace-pre text-left">
-                {tooltip}
-                <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-600"></div>
-            </div>
-        )}
     </div>
   );
 };
