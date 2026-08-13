@@ -570,13 +570,6 @@ export const TmcMap: React.FC<TmcMapProps> = ({
               </button>
             )}
             <button
-              onClick={() => { clearLocationCache(); setResolvedLocations(new Map()); setResolvedCount(0); setIsAutoMode(true); doResolve(); }}
-              disabled={loading || !cid}
-              className="px-2 py-1 text-[10px] uppercase font-bold rounded border bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700 disabled:opacity-30 transition-colors"
-            >
-              Refresh
-            </button>
-            <button
               onClick={onClose}
               className="px-3 py-1 text-[10px] uppercase font-bold rounded border bg-slate-800 text-slate-300 border-slate-700 hover:bg-slate-700 transition-colors"
             >
