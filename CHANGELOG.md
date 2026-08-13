@@ -1,5 +1,31 @@
 # RDSExpert Changelog
 
+### --- 13/08/2026 ---
+- Added a detection function for TA EON switching to another PI (sent via group 14B). When a switch is active, the EON flag flashes rapidly. Once inactive, the flag stops flashing rapidly but continues to blink every 5 seconds until the tooltip containing the switch details has been viewed.
+- Added a function to adjust the playback speed of RAW DATA recordings and to play the recordings in a loop.
+- Added a function to search for and filter an argument within group content in the "Group Monitor".
+- Added a logging function for TA (0A / 0B) and EON TA (14B) activations and deactivations.
+- Added a "Pause" button to the TMC decoder.
+- Added a PS history function to the EON section for stations using dynamic PS.
+- Added the ability to hide certain RDS entries before exporting a bandscan, and to sort entries by frequency.
+- Added the ability to sort TMC decoder messages by LOC codes and Event values.
+- Added the ability to view, in the Group Monitor, the content of RDS groups and the hex values ​​of RAW DATA recordings played in Instant Playback mode.
+- Added the "Duration Type" value (Longer Lasting and Dynamic) to events in the TMC decoder.
+- Added various values ​​to the TMC decoder, such as linkage information, MGS, CC, ECC, ...
+- Added TP and TA flags to the EON station entries, allowing this information to be viewed without having to open the details for each entry.
+- Changed the encoding format of RAW DATA files from "Unix (LF)" to "Windows (CR LF)" mode to ensure compatibility with other RDS softwares.
+- Changed the "N/A" value in TXT and PDF exports to "[No Data]" for better understanding and readability.
+- Corrected the GAP value in the TMC decoder, which was incorrect depending on the RDS.
+- Fixed a display bug where the group sequence in the Group Monitor was incomplete during RAW DATA recording playback in Instant Playback mode, specifically when the Group Monitor had not been opened prior to the start of playback.
+- Fixed the LTN SID value, which was not working correctly in the TMC decoder.
+- Improved PS history: Data appears upon the first decoding and no longer requires two consecutive decodings to be displayed. This is useful for radio stations with very fast or scrolling dynamic PS.
+- Improved Radiotext history: As for the PS history, messages can now appear after the first complete decoding and no longer need to be decoded twice in a row to be displayed. This change was necessary for certain stations that transmit Radiotext messages only once, as such messages were previously ignored by the history function.
+- Improved the underscores display button: It is now represented by a small menu, making it easier to customize how underscores are displayed.
+- PS / PTY / PTYN History: The PTYN value now appears only after it has been fully decoded, to prevent the display of incomplete text.
+- Removed the limit on the number of displayed group lines (Group Content + HEX Values) in the Group Monitor.
+- Significantly improved the TMC decoder, reducing the number of false detections and erroneous values.
+- When playing back RAW DATA recordings, the time displayed in the PS and RT histories, but also in the Group Monitor and the TMC decoder, is now the time contained in the recording, rather than the current one.
+
 ### --- 16/07/2026 ---
 - Added a feature to the "Radiotext History" that indicates which line (A or B) a message was sent on. It can be enabled or disabled upon request.
 - Fixed a bug that displayed only 1x <0D> in the "Radiotext History" for messages containing multiple.
