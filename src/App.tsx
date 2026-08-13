@@ -4165,7 +4165,7 @@ const App: React.FC = () => {
                      <i className="fa-solid fa-gauge text-[10px]"></i>
                    </button>
                    {showSpeedMenu && (
-                     <div className="absolute top-full mt-2 right-0 bg-slate-800 border border-slate-700 rounded shadow-lg z-50 flex flex-col overflow-hidden w-24">
+                     <div className="absolute top-full mt-2 right-0 bg-slate-800 border border-slate-700 rounded shadow-lg z-50 flex flex-col overflow-hidden w-max">
                        {[0.5, 1, 2, 3, 4, 5, 10].map((s) => (
                          <button
                            key={s}
@@ -4178,7 +4178,7 @@ const App: React.FC = () => {
                            }}
                            className={`px-3 py-1.5 text-left text-[10px] md:text-xs font-bold transition-colors ${rawPlaybackSpeed === s ? 'bg-blue-600 text-white' : 'text-slate-300 hover:bg-slate-700 hover:text-blue-400'}`}
                          >
-                           x{s.toFixed(2)}
+                           {s === 1 ? 'x1.00 (Normal speed)' : `x${s.toFixed(2)}`}
                          </button>
                        ))}
                      </div>
