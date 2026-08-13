@@ -512,10 +512,115 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
       }
   }, [hexLogs, viewMode, isPaused]);
 
+  // Helper to extract all ODA and SLC logs from a sequence of raw groups (for Instant Playback and initial load)
+  const buildOdaAndSlcLogs = useCallback((sequence: typeof data.rawGroupSequence, providerName?: string) => {
+      let dabTargetGroup: string | null = null;
+      let tmcTargetGroup: string | null = null;
+      let dabInfo = "";
+      let tmcInfo = "";
+      const odaList: string[] = [];
+      const slcSet = new Set<string>();
+
+      sequence.forEach(grp => {
+          if (grp.type === '3A' && grp.blocks) {
+              const aidHex = isNaN(grp.blocks[3]) ? '----' : grp.blocks[3].toString(16).toUpperCase().padStart(4, '0');
+              if (aidHex !== '----') {
+                  const appGroupCode = (grp.blocks[1] || 0) & 0x1F;
+                  const groupNum = appGroupCode >> 1;
+                  const groupVer = (appGroupCode & 1) ? 'B' : 'A';
+                  const targetGroup = `${groupNum}${groupVer}`;
+                  const odaName = ODA_MAP[aidHex] || "Unknown ODA!";
+
+                  if (aidHex === '0093') {
+                      dabTargetGroup = targetGroup;
+                  }
+                  if (aidHex === 'CD46') {
+                      tmcTargetGroup = targetGroup;
+                  }
+
+                  const logLine = `ODA detected: ${odaName} [${aidHex}] on Group ${targetGroup}`;
+                  
+                  if (aidHex === '0093') {
+                      const existingIdx = odaList.findIndex(l => l.includes('DAB Cross-Referencing [0093]'));
+                      if (existingIdx !== -1) {
+                          odaList[existingIdx] = logLine;
+                      } else {
+                          odaList.unshift(logLine);
+                      }
+                  } else if (aidHex === 'CD46') {
+                      const existingIdx = odaList.findIndex(l => l.includes('TMC (Traffic Message Channel) [CD46]'));
+                      if (existingIdx !== -1) {
+                          odaList[existingIdx] = logLine;
+                      } else {
+                          odaList.unshift(logLine);
+                      }
+                  } else {
+                      if (!odaList.includes(logLine)) {
+                          odaList.unshift(logLine);
+                      }
+                  }
+              }
+          }
+
+          if (dabTargetGroup && grp.type === dabTargetGroup && grp.blocks) {
+              const eid = isNaN(grp.blocks[3]) ? '----' : grp.blocks[3].toString(16).toUpperCase().padStart(4, '0');
+              const freqK = (grp.blocks[2] || 0) * 16;
+              const freqM = (freqK / 1000).toFixed(3);
+              const channel = DAB_CHANNELS[freqM] || "??";
+              dabInfo = ` -> EID = ${eid} / Channel = ${channel}`;
+              const idx = odaList.findIndex(l => l.includes('DAB Cross-Referencing [0093]'));
+              if (idx !== -1) {
+                  odaList[idx] = `ODA detected: DAB Cross-Referencing [0093] on Group ${dabTargetGroup}${dabInfo}`;
+              }
+          }
+
+          if (grp.type === '1A' && grp.blocks) {
+              const block3 = grp.blocks[2];
+              if (!isNaN(block3)) {
+                  const variant = (block3 >> 12) & 0x7;
+                  if (variant === 0) {
+                      if (((block3 >> 8) & 0xF) > 0) slcSet.add("Paging");
+                      if ((block3 & 0xFF) > 0) slcSet.add("Extended Country Code");
+                  } else if (variant === 1) {
+                      slcSet.add("TMC identification");
+                  } else if (variant === 2) {
+                      slcSet.add("Paging identification");
+                  } else if (variant === 3) {
+                      slcSet.add("Language Identification Code");
+                  } else if (variant === 4 || variant === 5) {
+                      slcSet.add("Unassigned SLC");
+                  } else if (variant === 6) {
+                      slcSet.add("Specific application developed by the broadcaster");
+                  } else if (variant === 7) {
+                      slcSet.add("EWS channel identification");
+                  }
+              }
+          }
+      });
+
+      if (providerName && providerName !== "[Identifying...]" && tmcTargetGroup) {
+          tmcInfo = ` -> Provider Name: ${providerName}`;
+          const idx = odaList.findIndex(l => l.includes('TMC (Traffic Message Channel) [CD46]'));
+          if (idx !== -1) {
+              odaList[idx] = `ODA detected: TMC (Traffic Message Channel) [CD46] on Group ${tmcTargetGroup}${tmcInfo}`;
+          }
+      }
+
+      return {
+          odaLogs: odaList.slice(0, 5),
+          slcLogs: Array.from(slcSet),
+          dabTargetGroup,
+          tmcTargetGroup,
+          dabInfo,
+          tmcInfo
+      };
+  }, []);
+
   // Handle ODA Detection (Independent of View Mode)
   useEffect(() => {
       if (isPaused) return; // Skip updates if paused
 
+      // If we have recent incoming groups (Live or Normal Playback)
       if (data.recentGroups.length > 0) {
           data.recentGroups.forEach(grp => {
               if (grp.type === '3A') {
@@ -635,8 +740,19 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                   }
               }
           });
+      } else if (data.rawGroupSequence && data.rawGroupSequence.length > 0 && odaLogs.length === 0 && slcLogs.length === 0) {
+          // Instant Playback / Pre-loaded groups fallback
+          const res = buildOdaAndSlcLogs(data.rawGroupSequence, data.tmcServiceInfo?.providerName);
+          if (res.odaLogs.length > 0 || res.slcLogs.length > 0) {
+              setOdaLogs(res.odaLogs);
+              setSlcLogs(res.slcLogs);
+              dabTargetGroupRef.current = res.dabTargetGroup;
+              dabInfoRef.current = res.dabInfo;
+              tmcTargetGroupRef.current = res.tmcTargetGroup;
+              tmcInfoRef.current = res.tmcInfo;
+          }
       }
-  }, [data.recentGroups, isPaused]);
+  }, [data.recentGroups, data.rawGroupSequence, isPaused, buildOdaAndSlcLogs, odaLogs.length, slcLogs.length, data.tmcServiceInfo?.providerName]);
 
   const buildDetailLogs = (sequence: typeof data.rawGroupSequence, targetGroup: string) => {
       let logs: LogItem[] = [];
@@ -838,17 +954,28 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
       }
   }, [data.groupTotal]);
 
-  // Explicitly reset ODA logs and viewer logs when PI changes (station change)
+  // Explicitly reset or rebuild ODA logs and viewer logs when PI changes (station change)
   useEffect(() => {
-      setOdaLogs([]);
-      setSlcLogs([]);
-      setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
-      setDetailLogs([]);
       dabTargetGroupRef.current = null;
       dabInfoRef.current = "";
       tmcTargetGroupRef.current = null;
       tmcInfoRef.current = "";
-  }, [data.pi]);
+      
+      if (data.rawGroupSequence && data.rawGroupSequence.length > 0) {
+          const res = buildOdaAndSlcLogs(data.rawGroupSequence, data.tmcServiceInfo?.providerName);
+          setOdaLogs(res.odaLogs);
+          setSlcLogs(res.slcLogs);
+          dabTargetGroupRef.current = res.dabTargetGroup;
+          dabInfoRef.current = res.dabInfo;
+          tmcTargetGroupRef.current = res.tmcTargetGroup;
+          tmcInfoRef.current = res.tmcInfo;
+      } else {
+          setOdaLogs([]);
+          setSlcLogs([]);
+      }
+      setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
+      setDetailLogs([]);
+  }, [data.pi, data.rawGroupSequence, buildOdaAndSlcLogs, data.tmcServiceInfo?.providerName]);
 
   // Determine what to display for Stream View
   const displaySequence = isPaused ? frozenSequence : data.groupSequence;
@@ -945,7 +1072,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
             {viewMode === 'STREAM' && (
                 <div 
                     ref={containerRef}
-                    className="p-3 font-mono text-xs leading-5 break-all shadow-inner h-48 overflow-hidden bg-black text-slate-300 selection:bg-slate-700 border-b border-slate-800"
+                    className="p-3 font-mono text-xs leading-5 break-all shadow-inner h-[210px] overflow-hidden bg-black text-slate-300 selection:bg-slate-700 border-b border-slate-800"
                 >
                     <div className="flex flex-wrap gap-y-1 content-start">
                         {displaySequence.map((grp, i) => (
