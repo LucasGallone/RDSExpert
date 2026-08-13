@@ -25,6 +25,7 @@
 - PS / PTY / PTYN History: The PTYN value now appears only after it has been fully decoded, to prevent the display of incomplete text.
 - Removed the limit on the number of displayed group lines (Group Content + HEX Values) in the Group Monitor.
 - Significantly improved the TMC decoder, reducing the number of false detections and erroneous values.
+- Various fixes and improvements for the TMC Map.
 - When playing back RAW DATA recordings, the time displayed in the PS and RT histories, but also in the Group Monitor and the TMC decoder, is now the time contained in the recording, rather than the current one.
 
 ### --- 16/07/2026 ---
