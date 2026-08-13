@@ -18,6 +18,7 @@
 - Corrected the GAP value in the TMC decoder, which was incorrect depending on the RDS.
 - Fixed a display bug where the group sequence in the Group Monitor was incomplete during RAW DATA recording playback in Instant Playback mode, specifically when the Group Monitor had not been opened prior to the start of playback.
 - Fixed the LTN SID value, which was not working correctly in the TMC decoder.
+- Fixed the missing information in the Group Monitor header, such as "ODA detected: ..." or "Slow Labelling Codes found:", when the source was a RAW DATA recording in Instant Playback mode.
 - Improved PS history: Data appears upon the first decoding and no longer requires two consecutive decodings to be displayed. This is useful for radio stations with very fast or scrolling dynamic PS.
 - Improved Radiotext history: As for the PS history, messages can now appear after the first complete decoding and no longer need to be decoded twice in a row to be displayed. This change was necessary for certain stations that transmit Radiotext messages only once, as such messages were previously ignored by the history function.
 - Improved the underscores display button: It is now represented by a small menu, making it easier to customize how underscores are displayed.
