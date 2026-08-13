@@ -30,9 +30,18 @@ const NATURE_COLORS: Record<string, { color: string; icon: string }> = {
 };
 
 function deriveCid(ecc: string, pi: string): { cid: number; defaultTabcd: number; country: string } | null {
-  if (!ecc || !pi || pi.length < 1) return null;
-  const key = `${ecc.toUpperCase()}_${pi.charAt(0).toUpperCase()}`;
-  return ECC_PI_TO_TMC_CID[key] || null;
+  if (!pi || pi.length < 1) return null;
+  const piFirst = pi.charAt(0).toUpperCase();
+  if (ecc) {
+    const key = `${ecc.toUpperCase()}_${piFirst}`;
+    if (ECC_PI_TO_TMC_CID[key]) return ECC_PI_TO_TMC_CID[key];
+  }
+  // If ECC is not yet available, check if piFirst uniquely identifies a country in ECC_PI_TO_TMC_CID
+  const matches = Object.entries(ECC_PI_TO_TMC_CID).filter(([k]) => k.endsWith(`_${piFirst}`));
+  if (matches.length === 1) {
+    return matches[0][1];
+  }
+  return null;
 }
 
 // Build deduplicated country list sorted alphabetically
@@ -55,12 +64,29 @@ export const TmcMap: React.FC<TmcMapProps> = ({
   const mapInstanceRef = useRef<any>(null);
   const markersLayerRef = useRef<any>(null);
   const [resolvedLocations, setResolvedLocations] = useState<Map<number, TmcResolvedLocation>>(new Map());
+  const resolvedLocationsRef = useRef<Map<number, TmcResolvedLocation>>(new Map());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [resolvedCount, setResolvedCount] = useState(0);
   const [totalCount, setTotalCount] = useState(0);
   const [manualCountry, setManualCountry] = useState<{ cid: number; defaultTabcd: number; country: string } | null>(null);
   const [hiddenNatures, setHiddenNatures] = useState<Set<string>>(new Set());
+  const [showManualPrompt, setShowManualPrompt] = useState(false);
+
+  // Pause / Resume state
+  const [isPaused, setIsPaused] = useState(false);
+  const [frozenMessages, setFrozenMessages] = useState<TmcMessage[] | null>(null);
+
+  // Auto-fit mode tracking: enabled by default, disabled only when user manually pans or zooms
+  const [isAutoMode, setIsAutoMode] = useState(true);
+  const isAutoModeRef = useRef(true);
+  isAutoModeRef.current = isAutoMode;
+
+  const isProgrammaticMoveRef = useRef(false);
+  const [outsideViewCount, setOutsideViewCount] = useState(0);
+
+  const displayedMessages = (isPaused && frozenMessages) ? frozenMessages : messages;
+  const pendingNewCount = (isPaused && frozenMessages) ? Math.max(0, messages.length - frozenMessages.length) : 0;
 
   const autoInfo = deriveCid(ecc, pi);
   const tmcInfo = autoInfo || manualCountry;
@@ -68,7 +94,93 @@ export const TmcMap: React.FC<TmcMapProps> = ({
   const tabcd = serviceInfo.ltn > 0 ? serviceInfo.ltn : (tmcInfo?.defaultTabcd || 0);
   const needsManualSelect = !autoInfo && !manualCountry;
 
-  // Initialize map when modal opens
+  // Function to re-calculate count of events outside current map view (only if user has taken manual control)
+  const checkOutsideEvents = useCallback(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    if (isAutoModeRef.current) {
+      setOutsideViewCount(0);
+      return;
+    }
+    try {
+      const mapBounds = map.getBounds();
+      let outside = 0;
+      const userMsgs = displayedMessages.filter(m => !m.isSystem && !hiddenNatures.has(m.nature));
+      const activeCodes = new Set(userMsgs.map(m => m.locationCode));
+
+      activeCodes.forEach(lcd => {
+        const loc = resolvedLocationsRef.current.get(lcd);
+        if (loc && loc.status === 'resolved') {
+          if (!mapBounds.contains([loc.lat, loc.lon])) {
+            outside++;
+          }
+        }
+      });
+      setOutsideViewCount(outside);
+    } catch {
+      // Map not initialized yet
+    }
+  }, [displayedMessages, hiddenNatures]);
+
+  const checkOutsideEventsRef = useRef<() => void>(() => {});
+  checkOutsideEventsRef.current = checkOutsideEvents;
+
+  // Fit all visible events in map view and re-enable automatic tracking mode
+  const handleFitAll = useCallback(() => {
+    const map = mapInstanceRef.current;
+    if (!map) return;
+    const bounds: [number, number][] = [];
+    const userMsgs = displayedMessages.filter(m => !m.isSystem && !hiddenNatures.has(m.nature));
+    const activeCodes = new Set(userMsgs.map(m => m.locationCode));
+
+    activeCodes.forEach(lcd => {
+      const loc = resolvedLocationsRef.current.get(lcd);
+      if (loc && loc.status === 'resolved') {
+        bounds.push([loc.lat, loc.lon]);
+      }
+    });
+
+    setIsAutoMode(true);
+    setOutsideViewCount(0);
+
+    if (bounds.length > 0) {
+      try {
+        isProgrammaticMoveRef.current = true;
+        if (typeof map.flyToBounds === 'function') {
+          map.flyToBounds(bounds, { padding: [50, 50], maxZoom: 13, duration: 0.8 });
+        } else {
+          map.fitBounds(bounds, { padding: [50, 50], maxZoom: 13 });
+        }
+      } catch (e) {
+        console.warn('Could not fit bounds:', e);
+      }
+    }
+  }, [displayedMessages, hiddenNatures]);
+
+  // Reset cache and count when country/table changes
+  useEffect(() => {
+    resolvedLocationsRef.current = new Map();
+    setResolvedLocations(new Map());
+    setResolvedCount(0);
+    setError(null);
+    setIsAutoMode(true);
+    setOutsideViewCount(0);
+  }, [cid, tabcd]);
+
+  // Grace period before displaying the "Country not detected" prompt
+  // Prevents false-positive flickering before Group 1A (ECC) is received.
+  useEffect(() => {
+    if (!isOpen || !needsManualSelect) {
+      setShowManualPrompt(false);
+      return;
+    }
+    const timer = setTimeout(() => {
+      setShowManualPrompt(true);
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [isOpen, needsManualSelect]);
+
+  // Initialize map ONLY once when modal opens
   useEffect(() => {
     if (!isOpen || !mapContainerRef.current) return;
     if (mapInstanceRef.current) return;
@@ -83,21 +195,48 @@ export const TmcMap: React.FC<TmcMapProps> = ({
     mapInstanceRef.current = map;
     markersLayerRef.current = L.layerGroup().addTo(map);
 
+    // Detect user manual interactions (drag, zoom) to switch from Auto mode to Manual mode
+    const handleUserInteractionStart = () => {
+      if (!isProgrammaticMoveRef.current) {
+        setIsAutoMode(false);
+      }
+    };
+
+    map.on('dragstart', handleUserInteractionStart);
+    map.on('zoomstart', handleUserInteractionStart);
+
+    // Track movement/zoom completion
+    map.on('moveend zoomend', () => {
+      isProgrammaticMoveRef.current = false;
+      checkOutsideEventsRef.current?.();
+    });
+
     // Fix grey tiles when map is rendered inside a modal
-    setTimeout(() => map.invalidateSize(), 300);
+    setTimeout(() => {
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
+    }, 300);
 
     // Keep map size in sync with container (fixes gray bar after zoom/resize)
     const container = mapContainerRef.current;
     const resizeObserver = new ResizeObserver(() => {
-      map.invalidateSize();
+      if (mapInstanceRef.current) {
+        mapInstanceRef.current.invalidateSize();
+      }
     });
     resizeObserver.observe(container);
 
     return () => {
       resizeObserver.disconnect();
-      map.remove();
+      try {
+        map.remove();
+      } catch (e) {
+        console.warn('Error removing map instance:', e);
+      }
       mapInstanceRef.current = null;
       markersLayerRef.current = null;
+      setIsAutoMode(true);
     };
   }, [isOpen]);
 
@@ -113,7 +252,7 @@ export const TmcMap: React.FC<TmcMapProps> = ({
   const doResolve = useCallback(async () => {
     if (!isOpen || !cid || !tabcd) return;
 
-    const userMessages = messages.filter(m => !m.isSystem);
+    const userMessages = displayedMessages.filter(m => !m.isSystem);
     const uniqueCodes = [...new Set(userMessages.map(m => m.locationCode))];
     setTotalCount(uniqueCodes.length);
 
@@ -142,36 +281,43 @@ export const TmcMap: React.FC<TmcMapProps> = ({
         neighbors.forEach((v, k) => resolved.set(k, v));
       }
 
-      setResolvedLocations(prev => {
-        const merged = new Map(prev);
-        resolved.forEach((v, k) => merged.set(k, v));
-        return merged;
-      });
-      const resolvedItems = [...resolved.values()].filter(l => l.status === 'resolved');
-      setResolvedCount(resolvedItems.length);
+      const mergedMap = new Map(resolvedLocationsRef.current);
+      resolved.forEach((v, k) => mergedMap.set(k, v));
+      resolvedLocationsRef.current = mergedMap;
 
-      if (resolvedItems.length === 0 && uniqueCodes.length > 0) {
+      const totalMapped = uniqueCodes.filter(lcd => mergedMap.get(lcd)?.status === 'resolved').length;
+
+      setResolvedLocations(mergedMap);
+      setResolvedCount(totalMapped);
+
+      if (totalMapped === 0 && uniqueCodes.length > 0) {
         setError(`No TMC location data available for this country (CID:${cid}, TABCD:${tabcd}). No local data file found and no TMC locations in OpenStreetMap. You can add local data by placing a ${cid}_${tabcd}.json file in the tmc/ folder.`);
+      } else {
+        setError(null);
       }
     } catch (err: any) {
-      setError(`Failed to resolve locations: ${err.message || err}`);
+      if (resolvedLocationsRef.current.size === 0) {
+        setError(`Failed to resolve locations: ${err.message || err}`);
+      } else {
+        console.warn('Failed to resolve some locations:', err);
+      }
     } finally {
       setLoading(false);
     }
-  }, [isOpen, messages.length, cid, tabcd]);
+  }, [isOpen, displayedMessages.length, cid, tabcd]);
 
   useEffect(() => {
     doResolve();
   }, [doResolve]);
 
-  // Update markers when resolved locations or filters change
+  // Update markers when resolved locations, displayed messages or filters change
   useEffect(() => {
     if (!markersLayerRef.current || !mapInstanceRef.current) return;
 
     markersLayerRef.current.clearLayers();
     const bounds: [number, number][] = [];
 
-    const userMessages = messages.filter(m => !m.isSystem);
+    const userMessages = displayedMessages.filter(m => !m.isSystem);
 
     // Group messages by locationCode
     const grouped = new Map<number, TmcMessage[]>();
@@ -332,10 +478,21 @@ export const TmcMap: React.FC<TmcMapProps> = ({
       }
     }
 
+    // Auto-fit mode: automatically keep all visible events framed in view until user manually interacts
     if (bounds.length > 0) {
-      mapInstanceRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+      if (isAutoModeRef.current) {
+        try {
+          isProgrammaticMoveRef.current = true;
+          mapInstanceRef.current.fitBounds(bounds, { padding: [40, 40], maxZoom: 12 });
+        } catch (e) {
+          console.warn('Could not fit bounds in auto mode:', e);
+        }
+      }
     }
-  }, [resolvedLocations, messages, hiddenNatures]);
+
+    // Check if any events are outside the current viewport (when in manual mode)
+    checkOutsideEventsRef.current?.();
+  }, [resolvedLocations, displayedMessages, hiddenNatures]);
 
   if (!isOpen) return null;
 
@@ -348,7 +505,7 @@ export const TmcMap: React.FC<TmcMapProps> = ({
           <div className="flex items-center gap-3">
             <h3 className="text-white text-sm font-bold uppercase tracking-wider flex items-center gap-2">
               <i className="fa-solid fa-map-location-dot text-cyan-400"></i>
-              TMC Traffic Map
+              TMC Map
             </h3>
             {loading && (
               <span className="text-[10px] text-cyan-400 font-mono animate-pulse">
@@ -363,18 +520,57 @@ export const TmcMap: React.FC<TmcMapProps> = ({
             <span className="text-[10px] text-slate-500 font-mono">
               {resolvedCount}/{totalCount} mapped | Cache: {getCacheSize()}
             </span>
+            {isPaused && (
+              <span className="px-2 py-0.5 text-[9px] font-bold uppercase tracking-wider bg-amber-500/20 text-amber-300 border border-amber-500/40 rounded-full flex items-center gap-1 animate-pulse">
+                <i className="fa-solid fa-pause text-[8px]"></i>
+                Paused {pendingNewCount > 0 ? `(+${pendingNewCount} queued)` : ''}
+              </span>
+            )}
           </div>
           <div className="flex items-center gap-2">
+            {/* Pause / Resume Button */}
+            <button
+              onClick={() => {
+                if (!isPaused) {
+                  setIsPaused(true);
+                  setFrozenMessages([...messages]);
+                } else {
+                  setIsPaused(false);
+                  setFrozenMessages(null);
+                }
+              }}
+              className={`px-2.5 py-1 text-[10px] uppercase font-bold rounded border transition-colors flex items-center gap-1.5 ${
+                isPaused
+                  ? 'bg-amber-500 text-slate-950 border-amber-400 hover:bg-amber-400 shadow-md shadow-amber-500/20 font-extrabold'
+                  : 'bg-slate-800 text-amber-400 border-amber-500/40 hover:bg-amber-500/10'
+              }`}
+              title={isPaused ? "Resume live TMC updates and show pending events" : "Pause live map updates"}
+            >
+              <i className={`fa-solid ${isPaused ? 'fa-play' : 'fa-pause'}`}></i>
+              <span>{isPaused ? `Resume${pendingNewCount > 0 ? ` (+${pendingNewCount})` : ''}` : 'Pause'}</span>
+            </button>
+
+            {/* Fit View Button */}
+            <button
+              onClick={handleFitAll}
+              disabled={resolvedCount === 0}
+              className="px-2 py-1 text-[10px] uppercase font-bold rounded border bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700 disabled:opacity-30 transition-colors flex items-center gap-1"
+              title="Recenter and fit all events on map"
+            >
+              <i className="fa-solid fa-expand"></i>
+              <span>Fit View</span>
+            </button>
+
             {manualCountry && (
               <button
-                onClick={() => { setManualCountry(null); clearLocationCache(); setResolvedLocations(new Map()); setResolvedCount(0); }}
+                onClick={() => { setManualCountry(null); clearLocationCache(); setResolvedLocations(new Map()); setResolvedCount(0); setIsAutoMode(true); }}
                 className="px-2 py-1 text-[10px] uppercase font-bold rounded border bg-slate-800 text-yellow-400 border-yellow-500/50 hover:bg-yellow-500/10 transition-colors"
               >
                 Change Country
               </button>
             )}
             <button
-              onClick={() => { clearLocationCache(); setResolvedLocations(new Map()); setResolvedCount(0); doResolve(); }}
+              onClick={() => { clearLocationCache(); setResolvedLocations(new Map()); setResolvedCount(0); setIsAutoMode(true); doResolve(); }}
               disabled={loading || !cid}
               className="px-2 py-1 text-[10px] uppercase font-bold rounded border bg-slate-800 text-cyan-400 border-slate-700 hover:bg-slate-700 disabled:opacity-30 transition-colors"
             >
@@ -396,8 +592,8 @@ export const TmcMap: React.FC<TmcMapProps> = ({
           </div>
         )}
 
-        {/* Country selector when ECC is not available */}
-        {needsManualSelect && (
+        {/* Country selector when ECC is not available and grace period elapsed */}
+        {needsManualSelect && showManualPrompt && (
           <div className="bg-slate-950 border-b border-slate-800 px-4 py-3 shrink-0">
             <div className="text-yellow-400 text-xs mb-2">
               Country not detected (no ECC from Group 1A). Please select the country:
@@ -445,8 +641,33 @@ export const TmcMap: React.FC<TmcMapProps> = ({
           })}
         </div>
 
-        {/* Map container */}
-        <div ref={mapContainerRef} className="flex-1 min-h-0" />
+        {/* Map container with floating notification badge */}
+        <div className="relative flex-1 min-h-0">
+          <div ref={mapContainerRef} className="w-full h-full" />
+
+          {/* Floating Pill: Notifications for events outside the current viewport (Manual mode) */}
+          {outsideViewCount > 0 && (
+            <div className="absolute top-3 inset-x-0 flex justify-center z-[1000] pointer-events-none">
+              <button
+                onClick={handleFitAll}
+                className="pointer-events-auto bg-slate-900/95 hover:bg-slate-850 text-slate-100 border border-cyan-400/80 shadow-2xl px-3.5 py-1.5 rounded-full text-xs font-semibold flex items-center gap-2.5 antialiased transition-all hover:scale-105 active:scale-95 cursor-pointer"
+                title="Click to frame all events and re-enable auto-fit"
+              >
+                <span className="relative flex h-2.5 w-2.5 shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-cyan-400 opacity-75"></span>
+                  <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-cyan-400"></span>
+                </span>
+                <span className="text-slate-100 font-medium">
+                  <strong className="text-cyan-300 font-bold">{outsideViewCount}</strong> {outsideViewCount > 1 ? 'events' : 'event'} outside current view
+                </span>
+                <span className="text-[10px] uppercase font-bold tracking-wider text-cyan-300 bg-cyan-950 px-2 py-0.5 rounded-full border border-cyan-500/60 flex items-center gap-1">
+                  <i className="fa-solid fa-arrows-to-eye text-[9px]"></i>
+                  Fit View
+                </span>
+              </button>
+            </div>
+          )}
+        </div>
       </div>
     </div>,
     document.body
