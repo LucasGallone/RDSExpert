@@ -71,6 +71,7 @@ export interface RdsData {
   groupCounts: Record<string, number>; // Key: "0A", "14B" etc.
   groupTotal: number;
   groupSequence: string[]; // History of last N groups ["0A", "2A", ...]
+  rawGroupSequence: RawGroup[]; // History of full raw groups
   recentGroups: RawGroup[]; // Buffer of raw groups received since last frame
   
   // RadioText Decoding Masks

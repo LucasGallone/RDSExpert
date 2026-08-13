@@ -167,6 +167,7 @@ interface DecoderState {
   groupCounts: Record<string, number>;
   groupTotal: number;
   groupSequence: string[];
+  rawGroupSequence: RawGroup[];
   
   graceCounter: number;
   isDirty: boolean;
@@ -824,6 +825,7 @@ const App: React.FC = () => {
     groupCounts: {},
     groupTotal: 0,
     groupSequence: [],
+    rawGroupSequence: [],
     
     graceCounter: GRACE_PERIOD_PACKETS,
     isDirty: false,
@@ -1259,6 +1261,7 @@ const App: React.FC = () => {
     state.groupCounts = {};
     state.groupTotal = 0;
     state.groupSequence = [];
+    state.rawGroupSequence = [];
     state.isDirty = true;
   }, []);
 
@@ -1429,6 +1432,7 @@ const App: React.FC = () => {
     state.groupCounts = {};
     state.groupTotal = 0;
     state.groupSequence = [];
+    state.rawGroupSequence = [];
 
     state.psHistoryBuffer = [];
     state.rtHistoryBuffer = [];
@@ -1582,6 +1586,7 @@ const App: React.FC = () => {
         };
         
         state.groupSequence = [];
+        state.rawGroupSequence = [];
         state.groupCounts = {};
         state.groupTotal = 0;
         state.piEstablishmentTime = Date.now();
@@ -1643,9 +1648,11 @@ const App: React.FC = () => {
     state.groupCounts[groupStr] = (state.groupCounts[groupStr] || 0) + 1;
     state.groupTotal++;
     state.groupSequence.push(groupStr);
-    if (state.groupSequence.length > 3000) { 
-      state.groupSequence.splice(0, 1000);
-    }
+    state.rawGroupSequence.push({
+      type: groupStr,
+      blocks: [g1, g2, g3, g4],
+      time: state.lastTimeString || new Date().toLocaleTimeString('fr-FR')
+    });
 
     // --- DAB Cross-Referencing Data Decoding (AID 0093) ---
     if (state.dabTargetGroup && groupStr === state.dabTargetGroup) {
@@ -3299,6 +3306,7 @@ const App: React.FC = () => {
           groupCounts: { ...state.groupCounts }, 
           groupTotal: state.groupTotal, 
           groupSequence: [...state.groupSequence], 
+          rawGroupSequence: [...state.rawGroupSequence],
           recentGroups: recent, 
           lpsMask: [...state.lpsMask],
           rtAMask: [...state.rtMask0],
@@ -3459,9 +3467,11 @@ const App: React.FC = () => {
                 s.groupTotal++;
                 s.groupCounts["--"] = (s.groupCounts["--"] || 0) + 1; 
                 s.groupSequence.push("--"); 
-                if (s.groupSequence.length > 3000) {
-                  s.groupSequence.splice(0, 1000);
-                }
+                s.rawGroupSequence.push({
+                  type: "--",
+                  blocks: [NaN, NaN, NaN, NaN],
+                  time: s.lastTimeString || new Date().toLocaleTimeString('fr-FR')
+                });
               }
               s.rawGroupBuffer.push({
                 type: "--",
@@ -3716,6 +3726,7 @@ const App: React.FC = () => {
     state.groupCounts = {};
     state.groupTotal = 0;
     state.groupSequence = [];
+    state.rawGroupSequence = [];
     state.psHistoryBuffer = [];
     state.rtHistoryBuffer = [];
     state.taHistoryBuffer = [];
@@ -3803,9 +3814,11 @@ const App: React.FC = () => {
               state.groupTotal++;
               state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
               state.groupSequence.push("--");
-              if (state.groupSequence.length > 3000) {
-                state.groupSequence.splice(0, 1000);
-              }
+              state.rawGroupSequence.push({
+                type: "--",
+                blocks: [NaN, NaN, NaN, NaN],
+                time: state.lastTimeString || new Date().toLocaleTimeString('fr-FR')
+              });
             }
             let errTime = state.lastTimeString || new Date().toLocaleTimeString('fr-FR');
             if (ts && ts.match(/(\d{2}:\d{2}:\d{2})/)) {
@@ -3920,9 +3933,11 @@ const App: React.FC = () => {
               state.groupTotal++;
               state.groupCounts["--"] = (state.groupCounts["--"] || 0) + 1;
               state.groupSequence.push("--");
-              if (state.groupSequence.length > 3000) {
-                state.groupSequence.splice(0, 1000);
-              }
+              state.rawGroupSequence.push({
+                type: "--",
+                blocks: [NaN, NaN, NaN, NaN],
+                time: state.lastTimeString || new Date().toLocaleTimeString('fr-FR')
+              });
             }
             let errTime = state.lastTimeString || new Date().toLocaleTimeString('fr-FR');
             const ts = parts[4];

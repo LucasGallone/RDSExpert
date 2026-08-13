@@ -1897,6 +1897,7 @@ export const INITIAL_RDS_DATA: RdsData = {
   groupCounts: {},
   groupTotal: 0,
   groupSequence: [],
+  rawGroupSequence: [],
   recentGroups: [],
   rtAMask: new Array(64).fill(false),
   rtBMask: new Array(64).fill(false),

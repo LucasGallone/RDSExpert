@@ -638,6 +638,65 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
       }
   }, [data.recentGroups, isPaused]);
 
+  const buildDetailLogs = (sequence: typeof data.rawGroupSequence, targetGroup: string) => {
+      let logs: LogItem[] = [];
+      sequence.forEach(grp => {
+          if (grp.type === targetGroup) {
+              const [g1, g2, g3, g4] = grp.blocks;
+              const hex = grp.blocks.map(b => isNaN(b) ? '----' : b.toString(16).toUpperCase().padStart(4, '0')).join(' ');
+              
+              const type = (g2 >> 12) & 0xF;
+              const version = (g2 >> 11) & 1;
+              const tp = (g2 >> 10) & 1;
+              const pty = (g2 >> 5) & 0x1F;
+              const b2Rest = g2 & 0x1F;
+              const groupTypeStr = `${type}${version === 0 ? 'A' : 'B'}`;
+              const tpStr = tp.toString();
+              const ptyBin = pty.toString(2).padStart(5, '0');
+              const b2RestBin = b2Rest.toString(2).padStart(5, '0');
+              
+              const b3H = (g3 >> 8) & 0xFF;
+              const b3L = g3 & 0xFF;
+              const b4H = (g4 >> 8) & 0xFF;
+              const b4L = g4 & 0xFF;
+
+              const b3HighBin = b3H.toString(2).padStart(8, '0');
+              const b3LowBin = b3L.toString(2).padStart(8, '0');
+              const b4HighBin = b4H.toString(2).padStart(8, '0');
+              const b4LowBin = b4L.toString(2).padStart(8, '0');
+
+              const dec3H = b3H.toString().padStart(3, ' ');
+              const dec3L = b3L.toString().padStart(3, ' ');
+              const dec4H = b4H.toString().padStart(3, ' ');
+              const dec4L = b4L.toString().padStart(3, ' ');
+
+              const char3H = (b3H >= 0x20 && b3H <= 0x9F) ? decodeRdsByte(b3H) : '.';
+              const char3L = (b3L >= 0x20 && b3L <= 0x9F) ? decodeRdsByte(b3L) : '.';
+              const char4H = (b4H >= 0x20 && b4H <= 0x9F) ? decodeRdsByte(b4H) : '.';
+              const char4L = (b4L >= 0x20 && b4L <= 0x9F) ? decodeRdsByte(b4L) : '.';
+
+              const line = `${grp.time}      ${hex}\u0003${groupTypeStr.padEnd(3, ' ')} ${tpStr}\u0001${ptyBin} ${b2RestBin}  ${b3HighBin} ${b3LowBin}  ${b4HighBin} ${b4LowBin}\u0002${dec3H} ${dec3L} ${dec4H} ${dec4L}\u0002'${char3H}${char3L}' '${char4H}${char4L}'`;
+              
+              logs.push({ id: logIdCounter.current++, text: line });
+          }
+      });
+      return logs;
+  };
+
+  const buildHexLogs = (sequence: typeof data.rawGroupSequence, cols: string[]) => {
+      const logs: Record<number, LogItem[]> = { 0: [], 1: [], 2: [], 3: [] };
+      sequence.forEach(grp => {
+          const packetHex = grp.blocks.map(b => isNaN(b) ? '----' : b.toString(16).toUpperCase().padStart(4, '0')).join(' ');
+          const line = `${grp.time}   ${packetHex}`;
+          cols.forEach((colType, colIndex) => {
+              if (grp.type === colType) {
+                  logs[colIndex].push({ id: logIdCounter.current++, text: line });
+              }
+          });
+      });
+      return logs;
+  };
+
   // Handle Incoming Data for Viewers
   useEffect(() => {
     if (isPaused) return; // Skip updates if paused
@@ -658,9 +717,8 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                     hexCols.forEach((colType, colIndex) => {
                         if (grp.type === colType) {
                             const currentLog = next[colIndex] || [];
-                            // Append to bottom, keep last 50
                             const newItem: LogItem = { id: logIdCounter.current++, text: line };
-                            const newLog = [...currentLog, newItem].slice(-50);
+                            const newLog = [...currentLog, newItem];
                             next[colIndex] = newLog;
                             changed = true;
                         }
@@ -713,10 +771,8 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
                         // Layout: TIME (8 chars) | HEX (19 chars) | NEW FORMAT
                         const line = `${grp.time}      ${hex}\u0003${groupTypeStr.padEnd(3, ' ')} ${tpStr}\u0001${ptyBin} ${b2RestBin}  ${b3HighBin} ${b3LowBin}  ${b4HighBin} ${b4LowBin}\u0002${dec3H} ${dec3L} ${dec4H} ${dec4L}\u0002'${char3H}${char3L}' '${char4H}${char4L}'`;
                         
-                        // Append to bottom, keep last 1000 lines for 8A (at least 1 minute of data), 200 for others
                         const newItem: LogItem = { id: logIdCounter.current++, text: line };
-                        const limit = detailGroup === "8A" ? 1000 : 200;
-                        next = [...next, newItem].slice(-limit); 
+                        next = [...next, newItem]; 
                         changed = true;
                     }
                 });
@@ -733,26 +789,29 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
       } else {
           setViewMode(mode);
           if (mode === 'DETAIL') {
-              setDetailLogs([]);
+              setDetailLogs(buildDetailLogs(data.rawGroupSequence, detailGroup));
           } else {
               setDetailSearchQuery('');
           }
-          if (mode === 'HEX') setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
+          if (mode === 'HEX') setHexLogs(buildHexLogs(data.rawGroupSequence, hexCols));
       }
   };
 
   const updateHexCol = (idx: number, type: string) => {
+      let nextCols: string[] = [];
       setHexCols(prev => {
           const next = [...prev];
           next[idx] = type;
+          nextCols = next;
           return next;
       });
-      setHexLogs(prev => ({ ...prev, [idx]: [] }));
+      // We must wait for nextCols to build logs or pass them directly
+      setHexLogs(buildHexLogs(data.rawGroupSequence, nextCols));
   };
 
   const updateDetailGroup = (type: string) => {
       setDetailGroup(type);
-      setDetailLogs([]);
+      setDetailLogs(buildDetailLogs(data.rawGroupSequence, type));
   };
 
   const togglePause = () => {
