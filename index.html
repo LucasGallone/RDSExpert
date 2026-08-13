@@ -18,6 +18,10 @@
     <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
     <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
     <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+      }
       body {
         font-family: 'Inter', sans-serif;
         background-color: #0f172a;
@@ -41,6 +45,24 @@
       @keyframes marquee {
         0% { transform: translateX(0); }
         100% { transform: translateX(-100%); }
+      }
+      @keyframes eonBlinkFast {
+        0%, 100% { opacity: 1; filter: drop-shadow(0 0 8px rgba(234,179,8,0.95)); }
+        50% { opacity: 0.25; filter: drop-shadow(0 0 2px rgba(234,179,8,0.2)); }
+      }
+      .animate-eon-blink-fast {
+        animation: eonBlinkFast 1.2s ease-in-out infinite;
+      }
+      @keyframes eonBlinkSlow {
+        0%, 100% { opacity: 1; filter: drop-shadow(0 0 6px rgba(234,179,8,0.85)); }
+        70% { opacity: 1; filter: drop-shadow(0 0 6px rgba(234,179,8,0.85)); }
+        85% { opacity: 0.3; filter: drop-shadow(0 0 1px rgba(234,179,8,0.1)); }
+      }
+      .animate-eon-blink-slow {
+        animation: eonBlinkSlow 5.0s ease-in-out infinite;
+      }
+      .animate-eon-blink {
+        animation: eonBlinkFast 0.6s ease-in-out infinite;
       }
       .no-scrollbar::-webkit-scrollbar {
           display: none;
