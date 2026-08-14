@@ -4056,7 +4056,7 @@ const App: React.FC = () => {
                   <button 
                     onClick={handlePlayRawClick}
                     className={`bg-slate-900/50 border rounded px-2 py-1.5 md:px-3 md:py-2 flex items-center justify-center gap-2 transition-all w-full h-full text-[10px] md:text-xs font-bold uppercase ${isDraggingOverRaw ? 'border-blue-500 bg-blue-500/20 text-blue-400 scale-105 shadow-[0_0_15px_rgba(59,130,246,0.5)]' : 'border-slate-800 text-slate-500 hover:text-blue-400 hover:border-blue-500/50'}`}
-                    title='This feature allows to play back an RDS recording. Select "Normal Playback" for a progressive data display (like real-time) or "Instant Playback" for an immediate display.'
+                    title={'This feature allows to play back an RDS recording. Select "Normal Playback" for a progressive data display (like real-time) or "Instant Playback" for an immediate display.\n\nYou can also drag and drop a file onto this button to play it.'}
                   >
                     <i className={`fa-solid ${isDraggingOverRaw ? 'fa-upload animate-bounce' : 'fa-play'}`}></i>
                     <span>{droppedFile ? 'CHOOSE PLAYBACK' : (isDraggingOverRaw ? 'DROP FILE' : 'RAW DATA')}</span>
