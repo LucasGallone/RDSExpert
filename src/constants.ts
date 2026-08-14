@@ -245,7 +245,7 @@ export const ECC_PI_TO_TMC_CID: Record<string, { cid: number; defaultTabcd: numb
     "E0_D": { cid: 58, defaultTabcd: 1, country: "Germany" },
     "E0_5": { cid: 25, defaultTabcd: 1, country: "Italy" },
     "E0_6": { cid: 6,  defaultTabcd: 1, country: "Belgium" },
-    "E0_A": { cid: 3,  defaultTabcd: 1, country: "Austria" },
+    "E0_A": { cid: 4,  defaultTabcd: 1, country: "Austria" },
     "E0_B": { cid: 21, defaultTabcd: 1, country: "Hungary" },
     // ECC E1
     "E1_F": { cid: 16, defaultTabcd: 1, country: "France" },
@@ -263,7 +263,7 @@ export const ECC_PI_TO_TMC_CID: Record<string, { cid: number; defaultTabcd: numb
     "E2_5": { cid: 47, defaultTabcd: 1, country: "Slovakia" },
     // ECC E3
     "E3_8": { cid: 38, defaultTabcd: 1, country: "Netherlands" },
-    "E3_E": { cid: 50, defaultTabcd: 1, country: "Sweden" },
+    "E3_E": { cid: 50, defaultTabcd: 33, country: "Sweden" },
     "E3_2": { cid: 24, defaultTabcd: 1, country: "Ireland" },
     "E3_C": { cid: 9,  defaultTabcd: 1, country: "Croatia" },
     "E3_3": { cid: 54, defaultTabcd: 1, country: "Turkey" },
