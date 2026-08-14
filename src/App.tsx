@@ -1726,31 +1726,39 @@ const App: React.FC = () => {
           state.psMask[address * 2] = true;
           state.psMask[address * 2 + 1] = true;
 
-          // 1. Initial complete decode trigger: immediately archive on the very first complete 8-character PS reception (like Radiotext)
+          // --- First PS Detection (for weak signals / non-0 started cycles) ---
+          // When psMask is complete for the first time, check if each segment was double-validated or received consistently
           if (!state.psHistoryLogged && state.psMask.every(m => m)) {
             const initialPs = renderRdsBuffer(state.psBuffer, false, false, true);
             const currentPtyn = state.ptynMask.every(m => m) ? renderRdsBuffer(state.ptynBuffer) : "";
-            if (state.currentPi !== "----" && initialPs.trim().length > 0) {
-              const last = state.psHistoryBuffer[0];
-              if (!last || last.ps !== initialPs || last.pty !== state.pty) {
-                state.psHistoryBuffer.unshift({
-                  time: state.lastTimeString || new Date().toLocaleTimeString(),
-                  pi: state.currentPi,
-                  ps: initialPs,
-                  pty: state.pty,
-                  ptyn: currentPtyn
-                });
-                if (state.psHistoryBuffer.length > 200) state.psHistoryBuffer.pop();
-                state.psHistoryLogged = true;
-                state.isDirty = true;
-              } else if (last.ptyn !== currentPtyn && currentPtyn.trim() !== "") {
-                last.ptyn = currentPtyn;
-                state.isDirty = true;
+            
+            // To ensure 100% correctness without needing a strict 0->1->2->3 cycle on weak signals,
+            // we verify that the assembled psBuffer matches the validation candidate
+            if (initialPs === state.psValidationBuffer) {
+              if (state.currentPi !== "----" && initialPs.trim().length > 0) {
+                const last = state.psHistoryBuffer[0];
+                if (!last || last.ps !== initialPs || last.pty !== state.pty) {
+                  state.psHistoryBuffer.unshift({
+                    time: state.lastTimeString || new Date().toLocaleTimeString(),
+                    pi: state.currentPi,
+                    ps: initialPs,
+                    pty: state.pty,
+                    ptyn: currentPtyn
+                  });
+                  if (state.psHistoryBuffer.length > 200) state.psHistoryBuffer.pop();
+                  state.psHistoryLogged = true;
+                  state.isDirty = true;
+                } else if (last.ptyn !== currentPtyn && currentPtyn.trim() !== "") {
+                  last.ptyn = currentPtyn;
+                  state.isDirty = true;
+                }
               }
+            } else {
+              state.psValidationBuffer = initialPs;
             }
           }
 
-          // 2. Sequential complete cycle trigger for dynamic PS updates (0 -> 1 -> 2 -> 3)
+          // --- Sequential 4-segment cycle detection (0 -> 1 -> 2 -> 3 or any circular sequence) ---
           if (address === 0) {
             state.psConsecutiveBuffer.fill(' ');
             state.nextExpectedAddress = 0;
@@ -1775,6 +1783,7 @@ const App: React.FC = () => {
                   }); 
                   if (state.psHistoryBuffer.length > 200) state.psHistoryBuffer.pop();
                   state.psHistoryLogged = true; 
+                  state.psValidationBuffer = newPsForArchive;
                   state.isDirty = true;
                 } else if (last.ptyn !== currentPtynForArchive && currentPtynForArchive.trim() !== "") {
                   last.ptyn = currentPtynForArchive;
