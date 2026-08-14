@@ -1704,38 +1704,6 @@ const App: React.FC = () => {
       state.ms = ms;
 
       if (address === 0) {
-        /* PS History archival trigger: Synchronized on Segment 0 to capture rapid title changes.
-           We check the double validation of the PREVIOUS cycle before starting to overwrite the buffer. */
-        const currentPsForArchive = renderRdsBuffer(state.psBuffer, false, false, true);
-        const currentPtynForArchive = state.ptynMask.every(m => m) ? renderRdsBuffer(state.ptynBuffer) : "";
-        const piEstablishedForArchive = state.piEstablishmentTime > 0 && (Date.now() - state.piEstablishmentTime > 1000);
-        
-        if (piEstablishedForArchive && state.currentPi !== "----") {
-            if (currentPsForArchive === state.psValidationBuffer) {
-                const last = state.psHistoryBuffer[0];
-                const hasContent = !state.psHistoryLogged ? (state.psMask.every(m => m) && currentPsForArchive.trim().length > 0) : true;
-                
-                if (hasContent) {
-                    if (!last || last.ps !== currentPsForArchive || last.pty !== state.pty) { 
-                        state.psHistoryBuffer.unshift({ 
-                            time: state.lastTimeString || new Date().toLocaleTimeString(), 
-                            pi: state.currentPi, 
-                            ps: currentPsForArchive, 
-                            pty: state.pty,
-                            ptyn: currentPtynForArchive
-                        }); 
-                        if (state.psHistoryBuffer.length > 200) state.psHistoryBuffer.pop();
-                        state.psHistoryLogged = true; 
-                    } else if (last.ptyn !== currentPtynForArchive && currentPtynForArchive.trim() !== "") {
-                        // Same PS/PTY but PTYN just arrived or updated -> Update existing entry to avoid duplicates
-                        last.ptyn = currentPtynForArchive;
-                    }
-                }
-            } else {
-                state.psValidationBuffer = currentPsForArchive;
-                state.ptynValidationBuffer = currentPtynForArchive;
-            }
-        }
         state.diDynamicPty = !!diBit;
       }
       if (address === 1) {
@@ -1758,6 +1726,31 @@ const App: React.FC = () => {
           state.psMask[address * 2] = true;
           state.psMask[address * 2 + 1] = true;
 
+          // 1. Initial complete decode trigger: immediately archive on the very first complete 8-character PS reception (like Radiotext)
+          if (!state.psHistoryLogged && state.psMask.every(m => m)) {
+            const initialPs = renderRdsBuffer(state.psBuffer, false, false, true);
+            const currentPtyn = state.ptynMask.every(m => m) ? renderRdsBuffer(state.ptynBuffer) : "";
+            if (state.currentPi !== "----" && initialPs.trim().length > 0) {
+              const last = state.psHistoryBuffer[0];
+              if (!last || last.ps !== initialPs || last.pty !== state.pty) {
+                state.psHistoryBuffer.unshift({
+                  time: state.lastTimeString || new Date().toLocaleTimeString(),
+                  pi: state.currentPi,
+                  ps: initialPs,
+                  pty: state.pty,
+                  ptyn: currentPtyn
+                });
+                if (state.psHistoryBuffer.length > 200) state.psHistoryBuffer.pop();
+                state.psHistoryLogged = true;
+                state.isDirty = true;
+              } else if (last.ptyn !== currentPtyn && currentPtyn.trim() !== "") {
+                last.ptyn = currentPtyn;
+                state.isDirty = true;
+              }
+            }
+          }
+
+          // 2. Sequential complete cycle trigger for dynamic PS updates (0 -> 1 -> 2 -> 3)
           if (address === 0) {
             state.psConsecutiveBuffer.fill(' ');
             state.nextExpectedAddress = 0;
@@ -1768,29 +1761,29 @@ const App: React.FC = () => {
             state.nextExpectedAddress = (address + 1) % 4;
             
             if (address === 3) {
-                const newPsForArchive = renderRdsBuffer(state.psConsecutiveBuffer, false, false, true);
-                const currentPtynForArchive = state.ptynMask.every(m => m) ? renderRdsBuffer(state.ptynBuffer) : "";
-                const piEstablishedForArchive = state.piEstablishmentTime > 0 && (Date.now() - state.piEstablishmentTime > 1000);
-                if (piEstablishedForArchive && state.currentPi !== "----" && newPsForArchive.trim().length > 0) {
-                    const last = state.psHistoryBuffer[0];
-                    if (!last || last.ps !== newPsForArchive || last.pty !== state.pty) { 
-                        state.psHistoryBuffer.unshift({ 
-                            time: state.lastTimeString || new Date().toLocaleTimeString(), 
-                            pi: state.currentPi, 
-                            ps: newPsForArchive, 
-                            pty: state.pty,
-                            ptyn: currentPtynForArchive
-                        }); 
-                        if (state.psHistoryBuffer.length > 200) state.psHistoryBuffer.pop();
-                        state.psHistoryLogged = true; 
-                        state.psValidationBuffer = newPsForArchive;
-                    } else if (last.ptyn !== currentPtynForArchive && currentPtynForArchive.trim() !== "") {
-                        last.ptyn = currentPtynForArchive;
-                    }
+              const newPsForArchive = renderRdsBuffer(state.psConsecutiveBuffer, false, false, true);
+              const currentPtynForArchive = state.ptynMask.every(m => m) ? renderRdsBuffer(state.ptynBuffer) : "";
+              if (state.currentPi !== "----" && newPsForArchive.trim().length > 0) {
+                const last = state.psHistoryBuffer[0];
+                if (!last || last.ps !== newPsForArchive || last.pty !== state.pty) { 
+                  state.psHistoryBuffer.unshift({ 
+                    time: state.lastTimeString || new Date().toLocaleTimeString(), 
+                    pi: state.currentPi, 
+                    ps: newPsForArchive, 
+                    pty: state.pty,
+                    ptyn: currentPtynForArchive
+                  }); 
+                  if (state.psHistoryBuffer.length > 200) state.psHistoryBuffer.pop();
+                  state.psHistoryLogged = true; 
+                  state.isDirty = true;
+                } else if (last.ptyn !== currentPtynForArchive && currentPtynForArchive.trim() !== "") {
+                  last.ptyn = currentPtynForArchive;
+                  state.isDirty = true;
                 }
+              }
             }
           } else {
-             state.nextExpectedAddress = 0;
+            state.nextExpectedAddress = 0;
           }
         }
       }
