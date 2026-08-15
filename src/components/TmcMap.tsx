@@ -29,13 +29,40 @@ const NATURE_COLORS: Record<string, { color: string; icon: string }> = {
   "Information":        { color: '#06b6d4', icon: 'fa-circle-info' },
 };
 
-function deriveCid(ecc: string, pi: string): { cid: number; defaultTabcd: number; country: string } | null {
+// Fallback mapping by PI first character and LTN (Table Code) for supported countries
+const PI_LTN_FALLBACK_MAP: Record<string, { cid: number; defaultTabcd: number; country: string }> = {
+  "5_1":  { cid: 25,  defaultTabcd: 1,  country: "Italy" },
+  "F_49": { cid: 40,  defaultTabcd: 49, country: "Norway" },
+  "6_17": { cid: 15,  defaultTabcd: 17, country: "Finland" },
+  "E_33": { cid: 50,  defaultTabcd: 33, country: "Sweden" },
+  "A_1":  { cid: 4,   defaultTabcd: 1,  country: "Austria" },
+  "9_35": { cid: 702, defaultTabcd: 35, country: "Slovenia" },
+  "8_1":  { cid: 38,  defaultTabcd: 1,  country: "Netherlands" },
+  "D_1":  { cid: 58,  defaultTabcd: 1,  country: "Germany" },
+  "1_1":  { cid: 58,  defaultTabcd: 1,  country: "Germany" },
+  "4_9":  { cid: 51,  defaultTabcd: 9,  country: "Switzerland" },
+};
+
+function deriveCid(ecc: string, pi: string, ltn?: number): { cid: number; defaultTabcd: number; country: string } | null {
   if (!pi || pi.length < 1) return null;
   const piFirst = pi.charAt(0).toUpperCase();
   if (ecc) {
     const key = `${ecc.toUpperCase()}_${piFirst}`;
     if (ECC_PI_TO_TMC_CID[key]) return ECC_PI_TO_TMC_CID[key];
   }
+
+  // Fallback 1: Deduce ECC/CID by PI's first nibble and LTN
+  if (ltn !== undefined && ltn > 0) {
+    const fallbackKey = `${piFirst}_${ltn}`;
+    if (PI_LTN_FALLBACK_MAP[fallbackKey]) {
+      return PI_LTN_FALLBACK_MAP[fallbackKey];
+    }
+    const matchesByPiAndLtn = Object.entries(ECC_PI_TO_TMC_CID).filter(([k, v]) => k.endsWith(`_${piFirst}`) && v.defaultTabcd === ltn);
+    if (matchesByPiAndLtn.length === 1) {
+      return matchesByPiAndLtn[0][1];
+    }
+  }
+
   // If ECC is not yet available, check if piFirst uniquely identifies a country in ECC_PI_TO_TMC_CID
   const matches = Object.entries(ECC_PI_TO_TMC_CID).filter(([k]) => k.endsWith(`_${piFirst}`));
   if (matches.length === 1) {
@@ -161,7 +188,7 @@ export const TmcMap: React.FC<TmcMapProps> = ({
   const numericServiceCid = serviceInfo.cid ? parseInt(serviceInfo.cid, 10) : 0;
 
   const autoInfo = useMemo(() => {
-    const fromEccPi = deriveCid(ecc, pi);
+    const fromEccPi = deriveCid(ecc, pi, serviceInfo?.ltn);
     if (fromEccPi) return fromEccPi;
     if (numericServiceCid > 0) {
       const fromList = COUNTRY_LIST.find(e => e.cid === numericServiceCid);
@@ -176,11 +203,17 @@ export const TmcMap: React.FC<TmcMapProps> = ({
   const tabcd = serviceInfo.ltn > 0 ? serviceInfo.ltn : (tmcInfo?.defaultTabcd || 1);
   const needsManualSelect = !autoInfo && !manualCountry && numericServiceCid === 0;
 
-  // Reset manual country selection and resolved locations when the station/PI/ECC changes or when RDS/TMC messages are reset
-  const prevStationKeyRef = useRef<string>('');
+  // Reset manual country selection and resolved locations when the station changes.
+  // We consider it a station change if the PI changes, or if the ECC changes between two non-empty values.
+  // We intentionally ignore transitions from empty ECC to a discovered ECC to prevent UI flashing.
+  const prevPiRef = useRef<string>('');
+  const prevEccRef = useRef<string>('');
   useEffect(() => {
-    const stationKey = `${ecc}_${pi}`;
-    if (prevStationKeyRef.current && prevStationKeyRef.current !== stationKey) {
+    const isNewStation = 
+      (prevPiRef.current && prevPiRef.current !== pi) || 
+      (prevEccRef.current && ecc && prevEccRef.current !== ecc);
+
+    if (isNewStation) {
       setManualCountry(null);
       clearLocationCache();
       resolvedLocationsRef.current = new Map();
@@ -190,7 +223,9 @@ export const TmcMap: React.FC<TmcMapProps> = ({
       setIsPaused(false);
       setFrozenMessages(null);
     }
-    prevStationKeyRef.current = stationKey;
+    
+    if (pi) prevPiRef.current = pi;
+    if (ecc) prevEccRef.current = ecc;
   }, [ecc, pi]);
 
   // Also reset manual country selection if RDS/TMC is reset (all messages cleared)
