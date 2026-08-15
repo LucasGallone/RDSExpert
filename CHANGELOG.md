@@ -1,5 +1,9 @@
 # RDSExpert Changelog
 
+### --- 15/08/2026 ---
+- Additional improvements to the TMC Map: Addition of a side panel listing detected events, added details in the tooltips for each map point, etc.
+- Fixed a bug that caused raw data recordings to play in a loop even when the option was disabled. At the end of the first playback, the progress bar and buttons would disappear, making it impossible to stop playback.
+
 ### --- 13/08/2026 ---
 - Added a detection function for TA EON switching to another PI (sent via group 14B). When a switch is active, the EON flag flashes rapidly. Once inactive, the flag stops flashing rapidly but continues to blink every 5 seconds until the tooltip containing the switch details has been viewed.
 - Added a function to adjust the playback speed of RAW DATA recordings and to play the recordings in a loop.
