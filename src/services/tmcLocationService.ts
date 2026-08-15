@@ -22,6 +22,9 @@ const strategyCache = new Map<string, number>();
 // Track whether local data was found for a country
 const localDataAvailable = new Map<string, boolean>();
 
+// Track countries where Overpass has no TMC table data to avoid repeated query loops
+const countryHasNoTmcData = new Set<string>();
+
 let lastQueryTime = 0;
 let activeEndpoint = 0;
 
@@ -141,8 +144,20 @@ export async function resolveLocations(
 
   if (unresolvedCodes.length === 0) return results;
 
-  // For local data, we can resolve all at once (no batching needed)
   const key = `${cid}:${tabcd}`;
+
+  // If this country/table is already known to have no data, resolve immediately without delays
+  if (countryHasNoTmcData.has(key)) {
+    unresolvedCodes.forEach(lcd => {
+      const cacheKey = `${cid}:${tabcd}:${lcd}`;
+      const notFound: TmcResolvedLocation = { locationCode: lcd, lat: 0, lon: 0, status: 'not_found' };
+      locationCache.set(cacheKey, notFound);
+      results.set(lcd, notFound);
+    });
+    return results;
+  }
+
+  // For local data, we can resolve all at once (no batching needed)
   if (localDataAvailable.get(key) !== false) {
     const localResult = await lookupLocal(unresolvedCodes, cid, tabcd);
     if (localResult !== null) {
@@ -152,12 +167,13 @@ export async function resolveLocations(
         locationCache.set(cacheKey, loc);
         results.set(lcd, loc);
       });
-      // Mark codes not in local data as not_found
+      // Mark codes not in local data as not_found (since local table is exhaustive for this country)
       unresolvedCodes.forEach(lcd => {
         const cacheKey = `${cid}:${tabcd}:${lcd}`;
         if (!localResult.has(lcd)) {
           const notFound: TmcResolvedLocation = { locationCode: lcd, lat: 0, lon: 0, status: 'not_found' };
           locationCache.set(cacheKey, notFound);
+          results.set(lcd, notFound);
         }
       });
       return results;
@@ -171,12 +187,18 @@ export async function resolveLocations(
     batches.push(unresolvedCodes.slice(i, i + TMC_SERVICE_CONFIG.batchSize));
   }
 
+  let anyFoundInOverpass = false;
+
   for (const batch of batches) {
     batch.forEach(lcd => pendingResolutions.add(`${cid}:${tabcd}:${lcd}`));
 
     try {
       await rateLimitWait();
       const resolved = await queryBatchOverpass(batch, cid, tabcd);
+
+      if (resolved.size > 0) {
+        anyFoundInOverpass = true;
+      }
 
       resolved.forEach((loc, lcd) => {
         const cacheKey = `${cid}:${tabcd}:${lcd}`;
@@ -190,19 +212,34 @@ export async function resolveLocations(
         if (!resolved.has(lcd)) {
           const notFound: TmcResolvedLocation = { locationCode: lcd, lat: 0, lon: 0, status: 'not_found' };
           locationCache.set(cacheKey, notFound);
+          results.set(lcd, notFound);
           pendingResolutions.delete(cacheKey);
         }
       });
     } catch (err) {
-      console.error('Overpass query failed after retries:', err);
+      console.warn('Overpass query failed after retries:', err);
       batch.forEach(lcd => {
-        pendingResolutions.delete(`${cid}:${tabcd}:${lcd}`);
+        const cacheKey = `${cid}:${tabcd}:${lcd}`;
+        const notFound: TmcResolvedLocation = { locationCode: lcd, lat: 0, lon: 0, status: 'not_found' };
+        locationCache.set(cacheKey, notFound);
+        results.set(lcd, notFound);
+        pendingResolutions.delete(cacheKey);
       });
-      throw err;
     }
   }
 
+  if (!anyFoundInOverpass && strategyCache.get(key) === undefined) {
+    countryHasNoTmcData.add(key);
+    countryHasNoTmcData.add(`${cid}`);
+  }
+
   return results;
+}
+
+export function isCountryKnownWithoutCoverage(cid: number, tabcd?: number): boolean {
+  if (countryHasNoTmcData.has(`${cid}`)) return true;
+  if (tabcd !== undefined && countryHasNoTmcData.has(`${cid}:${tabcd}`)) return true;
+  return false;
 }
 
 export function clearLocationCache(): void {
@@ -210,6 +247,7 @@ export function clearLocationCache(): void {
   pendingResolutions.clear();
   strategyCache.clear();
   localDataAvailable.clear();
+  countryHasNoTmcData.clear();
   clearLocalDataCache();
 }
 

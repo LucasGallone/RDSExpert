@@ -201,7 +201,7 @@ export const TMC_QUERY_STRATEGIES: TmcQueryStrategy[] = [
 
 export const TMC_SERVICE_CONFIG = {
   batchSize: 50,           // Max location codes per Overpass query
-  rateLimitMs: 1100,       // Minimum delay between Overpass requests
-  queryTimeoutMs: 20000,   // Abort request after this many ms
-  maxRetries: 2,           // Number of retry attempts (with endpoint rotation)
+  rateLimitMs: 400,        // Minimum delay between Overpass requests
+  queryTimeoutMs: 3000,    // Fast 3s timeout per query
+  maxRetries: 0,           // Single quick attempt per strategy
 };

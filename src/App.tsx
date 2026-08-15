@@ -3912,6 +3912,8 @@ const App: React.FC = () => {
         let processed = 0;
         
         while (processed < packetsToProcess) {
+          if (!state.isPlayingRaw) return;
+          
           if (state.rawPlaybackCurrent >= lines.length) {
             if (rawPlaybackLoopRef.current) {
               resetData();
@@ -3921,6 +3923,7 @@ const App: React.FC = () => {
               state.rawPlaybackTotal = lines.length;
             } else {
               stopRawPlayback();
+              return;
             }
           }
           
@@ -3976,6 +3979,7 @@ const App: React.FC = () => {
         if (processed > 0) {
           state.isDirty = true;
         }
+        if (!state.isPlayingRaw) return;
         playbackIntervalRef.current = setTimeout(scheduleNextFrame, 16);
       };
 
