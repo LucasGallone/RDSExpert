@@ -630,16 +630,6 @@ export const TmcMap: React.FC<TmcMapProps> = ({
       return coords;
     };
 
-    // Helper: calculate bearing between two points (degrees)
-    const bearing = (lat1: number, lon1: number, lat2: number, lon2: number): number => {
-      const toRad = (d: number) => d * Math.PI / 180;
-      const toDeg = (r: number) => r * 180 / Math.PI;
-      const dLon = toRad(lon2 - lon1);
-      const y = Math.sin(dLon) * Math.cos(toRad(lat2));
-      const x = Math.cos(toRad(lat1)) * Math.sin(toRad(lat2)) - Math.sin(toRad(lat1)) * Math.cos(toRad(lat2)) * Math.cos(dLon);
-      return (toDeg(Math.atan2(y, x)) + 360) % 360;
-    };
-
     const currentActiveLcds = new Set(grouped.keys());
 
     // 1. Remove markers for locations no longer present in filtered messages
@@ -847,24 +837,6 @@ export const TmcMap: React.FC<TmcMapProps> = ({
           interactive: false,
         });
         badge.addTo(decorationsLayerRef.current);
-      }
-
-      // Direction arrow on decorationsLayer
-      const dirMsg = sorted[0];
-      const neighborCode = dirMsg.direction ? loc.prevLocationCode : loc.nextLocationCode;
-      const neighborLoc = neighborCode ? resolvedLocations.get(neighborCode) : undefined;
-      if (neighborLoc && neighborLoc.status === 'resolved') {
-        const angle = bearing(loc.lat, loc.lon, neighborLoc.lat, neighborLoc.lon);
-        const arrow = L.marker([loc.lat, loc.lon], {
-          icon: L.divIcon({
-            className: 'pointer-events-none',
-            html: `<div style="font-size:10px;color:${primaryConfig.color};opacity:0.8;transform:translate(8px,-14px) rotate(${angle}deg);text-shadow:0 0 2px #000;pointer-events:none;"><i class="fa-solid fa-location-arrow"></i></div>`,
-            iconSize: [12, 12],
-            iconAnchor: [0, 12],
-          }),
-          interactive: false,
-        });
-        arrow.addTo(decorationsLayerRef.current);
       }
     }
 
