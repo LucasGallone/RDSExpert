@@ -749,9 +749,9 @@ export const TmcMap: React.FC<TmcMapProps> = ({
         existingEntry.defaultColor = primaryConfig.color;
         existingEntry.marker.setTooltipContent(tooltipContent);
         existingEntry.marker.setPopupContent(popupContent);
-        if (isCurrentlyHovered) {
-          existingEntry.marker.bringToFront();
-        }
+        // We do NOT call bringToFront() here as moving SVG elements in the DOM 
+        // during a hover state causes Chrome to lose track of the mouseout event,
+        // leading to stuck tooltips. The radius/weight increase is sufficient.
       } else {
         // Create new circle marker with high hit-accuracy and listeners attached
         const marker = L.circleMarker([loc.lat, loc.lon], {
@@ -800,9 +800,6 @@ export const TmcMap: React.FC<TmcMapProps> = ({
         marker.bindTooltip(tooltipContent, { className: 'tmc-popup custom-dark-tooltip', direction: 'top', offset: [0, -8] });
         marker.bindPopup(popupContent, { className: 'tmc-popup', maxWidth: 350, autoPan: false });
         marker.addTo(markersLayerRef.current);
-        if (isCurrentlyHovered) {
-          marker.bringToFront();
-        }
 
         markersByLcdRef.current.set(lcd, {
           marker,
@@ -866,7 +863,7 @@ export const TmcMap: React.FC<TmcMapProps> = ({
           color: '#38bdf8', // Cyan highlight border
           fillOpacity: 1,
         });
-        item.marker.bringToFront();
+        // item.marker.bringToFront(); // Removed to prevent Chrome mouseout bug
       } else {
         item.marker.setStyle({
           radius: item.defaultRadius,
