@@ -1,5 +1,8 @@
 # RDSExpert Changelog
 
+### --- 17/08/2026 ---
+- Fix tentative for Google Chrome users: Tooltips on the TMC Map were frozen upon opening and would not close.
+
 ### --- 15/08/2026 ---
 - Additional improvements to the TMC Map: Addition of a side panel listing detected events, added details in the tooltips for each map point, etc.
 - Fixed a bug that caused RAW DATA recordings to play in a loop even when the option was disabled. At the end of the first playback, the progress bar and buttons would disappear, making it impossible to stop playback.
