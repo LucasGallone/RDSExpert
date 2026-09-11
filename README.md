@@ -41,6 +41,9 @@ When attempting to connect to a "local" server, a small window will appear near 
 <br>
 <br>
 Obviously, RDSExpert will only have access to RDS information from your server, and absolutely nothing else!
+<br>
+<br>
+If you encounter this issue with the plugin for FM-DX webservers, [please refer to its dedicated documentation by clicking here.](https://github.com/LucasGallone/RDSExpert-Plugin/blob/main/README.md)
 ## Data that can be decoded
 • General features for the station identification: <b>PI code</b>, <b>PS</b>, <b>TP/TA flags</b> (Traffic Program - Traffic Announcement) and <b>Music/Speech switch</b>.
 <br>
