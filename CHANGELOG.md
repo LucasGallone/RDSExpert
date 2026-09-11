@@ -1,5 +1,11 @@
 # RDSExpert Changelog
 
+### --- 11/09/2026 ---
+- Added error messages displayed in a window for failed connections, along with a note regarding connection limitations to addresses on a local network.
+- Fixed an accidental regression that prevented progressive underscores from appearing on RTs sending empty text after the <0D> characters.
+- TMC Decoder / TMC Map: Corrected the definition of "Duration" values.
+- TMC Map: Fixed the direction of event lines, which was incorrect for multi-point events ("extent" value greater than 1).
+
 ### --- 17/08/2026 ---
 - Fix for Google Chrome users: Tooltips on the TMC Map were frozen upon opening and would not close.
 
