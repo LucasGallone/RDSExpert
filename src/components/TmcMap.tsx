@@ -551,21 +551,31 @@ export const TmcMap: React.FC<TmcMapProps> = ({
     try {
       const resolved = await resolveLocations(uniqueCodes, effectiveCid, effectiveTabcd);
 
-      // Collect neighbor codes (Prev/Next) for resolved locations to draw lines
-      const neighborCodes = new Set<number>();
-      resolved.forEach(loc => {
-        if (loc.status === 'resolved') {
-          if (loc.prevLocationCode) neighborCodes.add(loc.prevLocationCode);
-          if (loc.nextLocationCode) neighborCodes.add(loc.nextLocationCode);
-        }
+      // Determine maximum extent across all messages
+      let maxExtent = 1;
+      userMessages.forEach(m => {
+        if (m.extent > maxExtent) maxExtent = m.extent;
       });
-      // Remove codes we already have
-      resolved.forEach((_, lcd) => neighborCodes.delete(lcd));
 
-      // Resolve neighbor locations
-      if (neighborCodes.size > 0) {
+      // Iteratively resolve neighbors up to maxExtent times
+      let currentPassLocations = Array.from(resolved.values());
+      for (let pass = 0; pass < maxExtent; pass++) {
+        const neighborCodes = new Set<number>();
+        currentPassLocations.forEach(loc => {
+          if (loc.status === 'resolved') {
+            if (loc.prevLocationCode) neighborCodes.add(loc.prevLocationCode);
+            if (loc.nextLocationCode) neighborCodes.add(loc.nextLocationCode);
+          }
+        });
+
+        // Remove codes we already have
+        resolved.forEach((_, lcd) => neighborCodes.delete(lcd));
+
+        if (neighborCodes.size === 0) break;
+
         const neighbors = await resolveLocations([...neighborCodes], effectiveCid, effectiveTabcd);
         neighbors.forEach((v, k) => resolved.set(k, v));
+        currentPassLocations = Array.from(neighbors.values());
       }
 
       const mergedMap = new Map(resolvedLocationsRef.current);
