@@ -10,7 +10,7 @@ It is also designed for RBDS (RDS variant for North America).
 <br>
 -> Otherwise, you can copy and paste the following URL: `https://lucasgallone.github.io/RDSExpert/`
 <br>
--> You can also integrate RDSExpert directly into your webserver as a plugin! Instructions are provided below.
+-> You can also integrate RDSExpert directly into your webserver as a plugin! [Click here to know more.](https://github.com/LucasGallone/RDSExpert-Plugin)
 - - -
 This tool will be of particular interest to radio engineers and anyone with an interest in radio engineering. Its purpose is to allow in-depth analysis of the RDS data carried by FM signals, which webservers cannot completely display for obvious usability reasons.
 <br>
@@ -140,18 +140,6 @@ If you encounter this issue with the plugin for FM-DX webservers, [please refer 
 <br>
 <br>
 • All those who submitted suggestions, ideas, bug reports and who took the time to test this tool with different types of RDS encoders.
-# Integrate RDSExpert into your FM-DX webserver as a plugin!
-If you want to use RDSExpert directly on your FM-DX webserver, this plugin is made for you!
-<br>
-<br>
-The integrated interface allows you to use the decoder in a compact and direct way thanks to a floating window on the server.
-<br>
-No need to open a new tab in your web browser and enter your server URL every time. Everything is automated!
-<br>
-<br>
-To download the plugin and install it on your webserver, [follow the instructions by clicking here.](https://github.com/LucasGallone/RDSExpert-Plugin)
-<br>
-Or copy-paste the following link: `https://github.com/LucasGallone/RDSExpert-Plugin`
 # Getting started | Help documentation
 Learn how to use RDSExpert and find out more about the various functions offered by the decoder:
 <br>
