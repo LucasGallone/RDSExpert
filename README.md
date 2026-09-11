@@ -33,6 +33,14 @@ Follow the on-screen instructions after indicating it, and you'll be able to use
 <br>
 <br>
 If you are concerned about the potential risks this may cause, it is best to use a different web browser such as Mozilla Firefox.
+- - -
+Since August 2026, the same restriction was added to Mozilla Firefox, also affecting connections to HTTP servers on local networks. However, the workaround is relatively easier to implement compared to Google Chrome.
+<br>
+<br>
+When attempting to connect to a "local" server, a small window will appear near your browser's address bar, indicating that the site hosting RDSExpert is trying to access your local network. Simply click the button to grant access, and you will be able to use RDSExpert with your server.
+<br>
+<br>
+Obviously, RDSExpert will only have access to RDS information from your server, and absolutely nothing else!
 ## Data that can be decoded
 • General features for the station identification: <b>PI code</b>, <b>PS</b>, <b>TP/TA flags</b> (Traffic Program - Traffic Announcement) and <b>Music/Speech switch</b>.
 <br>
