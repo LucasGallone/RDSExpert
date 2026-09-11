@@ -4497,8 +4497,12 @@ const SecurityErrorModal: React.FC<{ onClose: () => void; serverUrl: string }> =
   let isLocal = false;
 
   try {
-    const url = new URL(serverUrl);
-    isMixedContent = window.location.protocol === 'https:' && url.protocol === 'ws:';
+    let inputUrl = serverUrl.trim();
+    if (!/^[a-zA-Z][a-zA-Z\d+\-.]*:\/\//.test(inputUrl)) {
+      inputUrl = 'http://' + inputUrl;
+    }
+    const url = new URL(inputUrl);
+    isMixedContent = window.location.protocol === 'https:' && (url.protocol === 'ws:' || url.protocol === 'http:');
     
     const host = url.hostname;
     isLocal = 
