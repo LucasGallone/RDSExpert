@@ -417,6 +417,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
   // Pause State
   const [isPaused, setIsPaused] = useState(false);
   const [frozenSequence, setFrozenSequence] = useState<string[]>([]);
+  const [frozenRawSequence, setFrozenRawSequence] = useState<typeof data.rawGroupSequence>([]);
 
   // Hex Viewer State
   const [hexCols, setHexCols] = useState<string[]>(() => {
@@ -904,12 +905,13 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
           if (mode === 'DETAIL') setDetailSearchQuery('');
       } else {
           setViewMode(mode);
+          const currentSeq = isPaused ? frozenRawSequence : data.rawGroupSequence;
           if (mode === 'DETAIL') {
-              setDetailLogs(buildDetailLogs(data.rawGroupSequence, detailGroup));
+              setDetailLogs(buildDetailLogs(currentSeq, detailGroup));
           } else {
               setDetailSearchQuery('');
           }
-          if (mode === 'HEX') setHexLogs(buildHexLogs(data.rawGroupSequence, hexCols));
+          if (mode === 'HEX') setHexLogs(buildHexLogs(currentSeq, hexCols));
       }
   };
 
@@ -927,13 +929,14 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
 
   const updateDetailGroup = (type: string) => {
       setDetailGroup(type);
-      setDetailLogs(buildDetailLogs(data.rawGroupSequence, type));
+      setDetailLogs(buildDetailLogs(isPaused ? frozenRawSequence : data.rawGroupSequence, type));
   };
 
   const togglePause = () => {
     if (!isPaused) {
         // Pausing: Snapshot current sequence
         setFrozenSequence(data.groupSequence);
+        setFrozenRawSequence(data.rawGroupSequence);
     }
     setIsPaused(!isPaused);
   };
@@ -947,6 +950,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
           setDetailLogs([]);
           setIsPaused(false);
           setFrozenSequence([]);
+          setFrozenRawSequence([]);
           dabTargetGroupRef.current = null;
           dabInfoRef.current = "";
           tmcTargetGroupRef.current = null;
@@ -956,24 +960,27 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
 
   // Re-synchronize detail or hex logs when Group Monitor is opened (active becomes true)
   useEffect(() => {
-      if (active && data.rawGroupSequence && data.rawGroupSequence.length > 0) {
+      const currentSeq = isPaused ? frozenRawSequence : data.rawGroupSequence;
+      if (active && currentSeq && currentSeq.length > 0) {
           if (viewMode === 'DETAIL') {
-              setDetailLogs(buildDetailLogs(data.rawGroupSequence, detailGroup));
+              setDetailLogs(buildDetailLogs(currentSeq, detailGroup));
           } else if (viewMode === 'HEX') {
-              setHexLogs(buildHexLogs(data.rawGroupSequence, hexCols));
+              setHexLogs(buildHexLogs(currentSeq, hexCols));
           }
       }
-  }, [active]);
+  }, [active, isPaused]);
 
   // Explicitly reset or rebuild ODA logs and viewer logs when PI changes (station change)
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => {
       dabTargetGroupRef.current = null;
       dabInfoRef.current = "";
       tmcTargetGroupRef.current = null;
       tmcInfoRef.current = "";
       
-      if (data.rawGroupSequence && data.rawGroupSequence.length > 0) {
-          const res = buildOdaAndSlcLogs(data.rawGroupSequence, data.tmcServiceInfo?.providerName);
+      const seq = isPaused ? frozenRawSequence : data.rawGroupSequence;
+      if (seq && seq.length > 0) {
+          const res = buildOdaAndSlcLogs(seq, data.tmcServiceInfo?.providerName);
           setOdaLogs(res.odaLogs);
           setSlcLogs(res.slcLogs);
           dabTargetGroupRef.current = res.dabTargetGroup;
@@ -981,12 +988,12 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
           tmcTargetGroupRef.current = res.tmcTargetGroup;
           tmcInfoRef.current = res.tmcInfo;
           if (viewMode === 'DETAIL') {
-              setDetailLogs(buildDetailLogs(data.rawGroupSequence, detailGroup));
+              setDetailLogs(buildDetailLogs(seq, detailGroup));
           } else {
               setDetailLogs([]);
           }
           if (viewMode === 'HEX') {
-              setHexLogs(buildHexLogs(data.rawGroupSequence, hexCols));
+              setHexLogs(buildHexLogs(seq, hexCols));
           } else {
               setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
           }
@@ -996,7 +1003,7 @@ export const GroupAnalyzer: React.FC<GroupAnalyzerProps> = ({ data, active, onTo
           setHexLogs({ 0: [], 1: [], 2: [], 3: [] });
           setDetailLogs([]);
       }
-  }, [data.pi, data.rawGroupSequence, buildOdaAndSlcLogs, data.tmcServiceInfo?.providerName, viewMode, detailGroup, hexCols]);
+  }, [data.pi, buildOdaAndSlcLogs, data.tmcServiceInfo?.providerName, viewMode, detailGroup, hexCols, isPaused]);
 
   // Determine what to display for Stream View
   const displaySequence = isPaused ? frozenSequence : data.groupSequence;

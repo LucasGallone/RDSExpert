@@ -126,6 +126,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
       
       const chars = processedText.split('');
       let controlFound = false; // Flag to track appearance of technical code in current render
+      let hasDecodedAfterControl = false;
       
       return (
         <>
@@ -135,7 +136,12 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
              // Technical Codes / Control Characters (0x00 - 0x1F)
              if (code < 32) {
                  // Logic for Long PS & RT: We only set the flag to stop underscores if the code is exactly 0x0D (13)
-                 if ((type === 'lps' || type === 'rt') && (code === 13 || code === 0)) controlFound = true;
+                 if ((type === 'lps' || type === 'rt') && (code === 13 || code === 0)) {
+                     controlFound = true;
+                     if (mask) {
+                         hasDecodedAfterControl = mask.slice(index + 1).some(Boolean);
+                     }
+                 }
                  const hex = code.toString(16).toUpperCase().padStart(2, '0');
                  return (
                     <span key={index} className="inline-block text-[0.6em] align-middle text-slate-500 font-bold bg-slate-900/50 rounded px-0.5 mx-px border border-slate-700 select-none">
@@ -145,7 +151,7 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
              }
              
              const isLpsActuallyActive = data.longPs && data.longPs.trim().length > 0;
-             const shouldHideUnderscore = ((type === 'lps' || type === 'rt') && controlFound) || 
+             const shouldHideUnderscore = ((type === 'lps' || type === 'rt') && controlFound && !hasDecodedAfterControl) || 
                                           (type === 'lps' && !isLpsActuallyActive) || 
                                           (is32CharRT && index >= 32);
 
@@ -470,12 +476,14 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
              {/* Blue indicator active if flag is A (false) AND Radiotext groups detected */}
              <div className={`w-3 h-3 rounded-full shadow-[0_0_5px_currentColor] border border-black/50 transition-colors duration-200 ${!data.textAbFlag && hasRtA ? 'bg-blue-500 text-blue-500' : 'bg-slate-800 text-slate-800'}`}></div>
           </div>
-          <div className="w-full flex-1 min-w-0 bg-slate-800/30 rounded py-2 px-4 min-h-[56px] flex items-center border border-transparent transition-colors duration-300 relative overflow-x-auto no-scrollbar">
-             {/* Selection Border: Active if flag is A AND has content */}
-             {!data.textAbFlag && hasRtA && <div className="absolute inset-0 border border-blue-500/30 rounded pointer-events-none"></div>}
-             <span className="font-mono text-lg md:text-2xl text-slate-200 whitespace-pre leading-tight shrink-0">
-               <RenderEnhancedText text={data.rtA} type="rt" mask={data.rtAMask} />
-             </span>
+          <div className="w-full flex-1 min-w-0 bg-slate-800/30 rounded overflow-x-auto no-scrollbar">
+             <div className="min-w-full w-max relative py-2 px-4 min-h-[56px] flex items-center transition-colors duration-300">
+                 {/* Selection Border: Active if flag is A AND has content */}
+                 {!data.textAbFlag && hasRtA && <div className="absolute inset-0 border border-blue-500/30 rounded pointer-events-none"></div>}
+                 <span className="font-mono text-lg md:text-2xl text-slate-200 whitespace-pre leading-tight shrink-0">
+                   <RenderEnhancedText text={data.rtA} type="rt" mask={data.rtAMask} />
+                 </span>
+             </div>
           </div>
         </div>
 
@@ -494,12 +502,14 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
              {/* Blue indicator active if flag is B (true) AND Radiotext groups detected */}
              <div className={`w-3 h-3 rounded-full shadow-[0_0_5px_currentColor] border border-black/50 transition-colors duration-200 ${data.textAbFlag && hasRtB ? 'bg-blue-500 text-blue-500' : 'bg-slate-800 text-slate-800'}`}></div>
           </div>
-          <div className="w-full flex-1 min-w-0 bg-slate-800/30 rounded py-2 px-4 min-h-[56px] flex items-center relative overflow-x-auto no-scrollbar">
-             {/* Selection Border: Active if flag is B AND has content */}
-             {data.textAbFlag && hasRtB && <div className="absolute inset-0 border border-blue-500/30 rounded pointer-events-none"></div>}
-             <span className="font-mono text-lg md:text-2xl text-slate-200 whitespace-pre shrink-0">
-               <RenderEnhancedText text={data.rtB} type="rt" mask={data.rtBMask} />
-             </span>
+          <div className="w-full flex-1 min-w-0 bg-slate-800/30 rounded overflow-x-auto no-scrollbar">
+             <div className="min-w-full w-max relative py-2 px-4 min-h-[56px] flex items-center">
+                 {/* Selection Border: Active if flag is B AND has content */}
+                 {data.textAbFlag && hasRtB && <div className="absolute inset-0 border border-blue-500/30 rounded pointer-events-none"></div>}
+                 <span className="font-mono text-lg md:text-2xl text-slate-200 whitespace-pre shrink-0">
+                   <RenderEnhancedText text={data.rtB} type="rt" mask={data.rtBMask} />
+                 </span>
+             </div>
           </div>
         </div>
 

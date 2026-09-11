@@ -258,19 +258,23 @@ export const TmcViewer: React.FC<TmcViewerProps> = ({ data, active, paused, onTo
                                     <div>
                                         Nature: <span className="font-bold text-slate-200">{selectedMsg.nature}</span>
                                     </div>
-                                    <div>
-                                        Duration: <span className="font-bold text-slate-200">{selectedMsg.durationLabel}</span>
-                                    </div>
                                     {selectedMsg.durationType && (
                                         <div>
                                             Duration Type: <span className="font-bold text-slate-200">{selectedMsg.durationType}</span>
                                         </div>
                                     )}
+                                    <div>
+                                        Duration: <span className="font-bold text-slate-200">{selectedMsg.durationLabel}</span>
+                                    </div>
                                     <div className="mt-3 pt-3 border-t border-slate-800 text-slate-500">
                                         Received: <span className="text-slate-400">{selectedMsg.receivedTime}</span>
                                         <br/>
-                                        Expires: <span className="text-slate-400">{selectedMsg.expiresTime}</span>
-                                        <br/>
+                                        {selectedMsg.expiresTime && (
+                                            <>
+                                                Expires: <span className="text-slate-400">{selectedMsg.expiresTime}</span>
+                                                <br/>
+                                            </>
+                                        )}
                                         Updates Received: <span className="text-slate-400">{selectedMsg.updateCount || 1}</span>
                                         {selectedMsg.lastUpdatedTime && (
                                             <>

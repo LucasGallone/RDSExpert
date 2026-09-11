@@ -234,6 +234,7 @@ export interface TmcServiceInfo {
     mgs?: number; // Message Geographical Scope
     ltecc?: number; // Extended Country Code
     isEncrypted?: boolean; // Encryption status
+    hasBeenEncrypted?: boolean; // True if encryption was detected at any point
     encId?: number; // Encryption ID
     otherNetworks?: Record<string, { sid?: number; ltn?: number; mgs?: number }>; // Other networks info
 }

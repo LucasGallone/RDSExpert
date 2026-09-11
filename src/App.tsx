@@ -539,33 +539,33 @@ const getDurationType = (code: number): "Dynamic" | "Longer Lasting" | "Forecast
     return "Dynamic";
 };
 
-const getDurationLabel = (code: number, eventCode: number): { label: string, minutes: number, isLongerLasting: boolean, days: number, durationType: string } => {
+const getDurationLabel = (code: number, eventCode: number): { label: string, minutes: number, isLongerLasting: boolean, durationType: string } => {
   const durationType = getDurationType(eventCode);
   const longerLasting = durationType === "Longer Lasting" || durationType === "Forecast";
   
   if (longerLasting) {
      switch(code) {
-        case 0: return { label: "No duration", minutes: 0, isLongerLasting: true, days: 0, durationType };
-        case 1: return { label: "Rest of day", minutes: 0, isLongerLasting: true, days: 0, durationType };
-        case 2: return { label: "1 day", minutes: 0, isLongerLasting: true, days: 1, durationType };
-        case 3: return { label: "2 days", minutes: 0, isLongerLasting: true, days: 2, durationType };
-        case 4: return { label: "3 days", minutes: 0, isLongerLasting: true, days: 3, durationType };
-        case 5: return { label: "4 days", minutes: 0, isLongerLasting: true, days: 4, durationType };
-        case 6: return { label: "5 days", minutes: 0, isLongerLasting: true, days: 5, durationType };
-        case 7: return { label: "6 days", minutes: 0, isLongerLasting: true, days: 6, durationType };
-        default: return { label: "Unknown", minutes: 0, isLongerLasting: true, days: 0, durationType };
+        case 0: return { label: "Unknown", minutes: 0, isLongerLasting: true, durationType };
+        case 1: return { label: "Several hours", minutes: 0, isLongerLasting: true, durationType };
+        case 2: return { label: "Rest of the day", minutes: 0, isLongerLasting: true, durationType };
+        case 3: return { label: "Today and entire day tomorrow", minutes: 0, isLongerLasting: true, durationType };
+        case 4: return { label: "Rest of the week", minutes: 0, isLongerLasting: true, durationType };
+        case 5: return { label: "Until the end of next week", minutes: 0, isLongerLasting: true, durationType };
+        case 6: return { label: "Rest of the month", minutes: 0, isLongerLasting: true, durationType };
+        case 7: return { label: "A long time", minutes: 0, isLongerLasting: true, durationType };
+        default: return { label: "Unknown", minutes: 0, isLongerLasting: true, durationType };
      }
   } else {
      switch(code) {
-        case 0: return { label: "No duration", minutes: 0, isLongerLasting: false, days: 0, durationType };
-        case 1: return { label: "15 minutes", minutes: 15, isLongerLasting: false, days: 0, durationType };
-        case 2: return { label: "30 minutes", minutes: 30, isLongerLasting: false, days: 0, durationType };
-        case 3: return { label: "1 hour", minutes: 60, isLongerLasting: false, days: 0, durationType };
-        case 4: return { label: "2 hours", minutes: 120, isLongerLasting: false, days: 0, durationType };
-        case 5: return { label: "3 hours", minutes: 180, isLongerLasting: false, days: 0, durationType };
-        case 6: return { label: "4 hours", minutes: 240, isLongerLasting: false, days: 0, durationType };
-        case 7: return { label: "Rest of day", minutes: 0, isLongerLasting: false, days: 0, durationType };
-        default: return { label: "Unknown", minutes: 0, isLongerLasting: false, days: 0, durationType };
+        case 0: return { label: "Unknown", minutes: 0, isLongerLasting: false, durationType };
+        case 1: return { label: "15 minutes", minutes: 15, isLongerLasting: false, durationType };
+        case 2: return { label: "30 minutes", minutes: 30, isLongerLasting: false, durationType };
+        case 3: return { label: "1 hour", minutes: 60, isLongerLasting: false, durationType };
+        case 4: return { label: "2 hours", minutes: 120, isLongerLasting: false, durationType };
+        case 5: return { label: "3 hours", minutes: 180, isLongerLasting: false, durationType };
+        case 6: return { label: "4 hours", minutes: 240, isLongerLasting: false, durationType };
+        case 7: return { label: "Rest of the day", minutes: 0, isLongerLasting: false, durationType };
+        default: return { label: "Unknown", minutes: 0, isLongerLasting: false, durationType };
      }
   }
 };
@@ -701,6 +701,7 @@ const App: React.FC = () => {
   const tmcPausedRef = useRef<boolean>(false);
   
   const wsRef = useRef<WebSocket | null>(null);
+  const logsContainerRef = useRef<HTMLDivElement>(null);
   const packetCountRef = useRef<number>(0);
   const lineBufferRef = useRef<string>(""); 
   const tmcIdCounter = useRef<number>(0);
@@ -870,7 +871,7 @@ const App: React.FC = () => {
         message: message, 
         type: type 
       };
-      return [entry, ...prev].slice(0, 100);
+      return [...prev, entry].slice(-100);
     });
   }, []);
 
@@ -1306,6 +1307,12 @@ const App: React.FC = () => {
     rawPlaybackLinesRef.current = [];
     decoderState.current.isDirty = true;
   }, []);
+
+  useEffect(() => {
+    if (logsContainerRef.current) {
+      logsContainerRef.current.scrollTop = logsContainerRef.current.scrollHeight;
+    }
+  }, [logs]);
 
   useEffect(() => {
     const handleBeforeUnload = (e: BeforeUnloadEvent) => {
@@ -2171,20 +2178,11 @@ const App: React.FC = () => {
               }
 
               const durInfo = getDurationLabel(durationCode, eventCode);
-              let expiresTimeStr = "--:--:--";
+              let expiresTimeStr = "";
                 
-              const dt = new Date(receivedTimestamp);
-              if (durInfo.isLongerLasting) {
-                 if (durationCode > 0) {
-                    const expireDate = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + durInfo.days + 1, 0, 0, 0);
-                    expiresTimeStr = formatTmcTime(expireDate);
-                 }
-              } else {
+              if (!durInfo.isLongerLasting) {
                  if (durInfo.minutes > 0) {
                     const expireDate = new Date(receivedTimestamp + durInfo.minutes * 60000);
-                    expiresTimeStr = formatTmcTime(expireDate);
-                 } else if (durationCode === 7) {
-                    const expireDate = new Date(dt.getFullYear(), dt.getMonth(), dt.getDate() + 1, 0, 0, 0);
                     expiresTimeStr = formatTmcTime(expireDate);
                  }
               }
@@ -2787,6 +2785,9 @@ const App: React.FC = () => {
                  state.tmcServiceInfo.ltn = ltn3a;
                }
                state.tmcServiceInfo.isEncrypted = ltn3a === 0;
+               if (ltn3a === 0) {
+                 state.tmcServiceInfo.hasBeenEncrypted = true;
+               }
                state.tmcServiceInfo.mgs = g3 & 0x0F;
              } else if (variant === 1) {
                state.tmcServiceInfo.sid = (g3 >> 6) & 0x3F;
@@ -3419,7 +3420,8 @@ const App: React.FC = () => {
       
       ws.onerror = () => { 
         setStatus(ConnectionStatus.ERROR); 
-        addLog('Connection Error', 'error'); 
+        addLog(`Error: The connection attempt to ${finalUrl} has failed.`, 'error');
+        setShowSecurityError(true); 
       };
       
       ws.onmessage = (evt) => {
@@ -3511,13 +3513,8 @@ const App: React.FC = () => {
     } catch (e) { 
       setStatus(ConnectionStatus.ERROR); 
       let msg = e instanceof Error ? e.message : String(e); 
-      if (msg.includes("insecure")) { 
-        msg = "This version cannot connect to HTTP servers. Please follow the on-screen instructions."; 
-        if (window.location.protocol === 'https:') {
-          setShowSecurityError(true); 
-        }
-      } 
-      addLog(`Connection Failed: ${msg}`, 'error'); 
+      setShowSecurityError(true);
+      addLog(`Error: The connection attempt to ${serverUrl} has failed.`, 'error'); 
     }
   };
 
@@ -3537,7 +3534,7 @@ const App: React.FC = () => {
       wsRef.current.close(); 
       wsRef.current = null; 
       setStatus(ConnectionStatus.DISCONNECTED);
-      addLog(`Disconnected by user.`, 'warning');
+      addLog(`Connection closed by the user.`, 'warning');
     } 
   };
 
@@ -4259,7 +4256,7 @@ const App: React.FC = () => {
 
            </div>
            
-           <div className="space-y-1 overflow-y-auto p-4 pt-2 custom-scrollbar flex-1">
+           <div className="space-y-1 overflow-y-auto p-4 pt-2 custom-scrollbar flex-1" ref={logsContainerRef}>
              {logs.length === 0 && (
                <div className="text-slate-400 italic p-2 opacity-80">No events recorded.</div>
              )}
@@ -4497,18 +4494,18 @@ const App: React.FC = () => {
 
 const SecurityErrorModal: React.FC<{ onClose: () => void; serverUrl: string }> = ({ onClose, serverUrl }) => createPortal(
   <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
-    <div className="bg-slate-900 border-2 border-red-500/50 rounded-lg shadow-2xl w-full max-w-lg flex flex-col overflow-hidden relative">
+    <div className="bg-slate-900 border-2 border-red-500/50 rounded-lg shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden relative">
       <div className="p-6 text-center space-y-4">
         <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mx-auto border border-red-500/30">
           <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
           </svg>
         </div>
-        <h3 className="text-xl font-bold text-white">Action required to continue</h3>
-        <p className="text-slate-300 text-sm leading-relaxed">
-          Unfortunately, due to web browser security restrictions, the HTTPS version of this interface can only be used with HTTPS servers.<br /><br />
-          You can bypass this limitation and connect to the specified HTTP server by using the HTTP version of this interface, hosted by @Bkram.<br /><br />
-          Click the button below to do so. (Opens a new tab)
+        <h3 className="text-xl font-bold text-white leading-tight break-all">Error: The connection attempt to {serverUrl} has failed.</h3>
+        <p className="text-slate-300 text-xs leading-relaxed mt-4">
+          If you attempt to connect to an HTTP server using an address on your local network, your browser may block the connection for security reasons.
+          <br /><br />
+          To bypass this limitation, please refer to the decoder's documentation by <a href="https://github.com/LucasGallone/RDSExpert#notes-regarding-use-with-http-servers-hosted-on-a-local-network" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">clicking here</a>.
         </p>
       </div>
       <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-center gap-3">
@@ -4518,14 +4515,6 @@ const SecurityErrorModal: React.FC<{ onClose: () => void; serverUrl: string }> =
         >
           Close
         </button>
-        <a 
-          href={`http://rdsexpert.fmdx-webserver.nl:8080/?url=${encodeURIComponent(serverUrl)}`} 
-          target="_blank" 
-          rel="noopener noreferrer"
-          className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[11px] md:text-sm font-bold rounded transition-colors uppercase border border-blue-500 shadow-lg shadow-blue-500/20 flex items-center text-center"
-        >
-          SWITCH TO THE HTTP INTERFACE
-        </a>
       </div>
     </div>
   </div>,

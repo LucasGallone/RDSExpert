@@ -620,7 +620,7 @@ export const TmcMap: React.FC<TmcMapProps> = ({
       const coords: [number, number][] = [[startLoc.lat, startLoc.lon]];
       let current = startLoc;
       for (let i = 0; i < extent; i++) {
-        const nextCode = direction ? current.nextLocationCode : current.prevLocationCode;
+        const nextCode = direction ? current.prevLocationCode : current.nextLocationCode;
         if (!nextCode) break;
         const nextLoc = resolvedLocations.get(nextCode);
         if (!nextLoc || nextLoc.status !== 'resolved') break;
@@ -692,44 +692,38 @@ export const TmcMap: React.FC<TmcMapProps> = ({
 
       // Tooltip HTML
       const locText = `#${lcd}${loc.name ? ` — ${escapeHtml(loc.name)}` : ''}`;
-      const tooltipLines = sorted.slice(0, 3).map(msg => {
+      
+      const renderMsgHtml = (msg: any, isLast: boolean) => {
         const cfg = NATURE_COLORS[msg.nature] || NATURE_COLORS["Information"];
         const dirText = msg.direction ? 'Positive (+)' : 'Negative (−)';
+        const extentStr = msg.extent > 0 ? ` · Extent: ${msg.extent}` : '';
         const expireStr = msg.expiresTime ? `<br/>Detected: ${escapeHtml(msg.receivedTime)}<br/>Expires: ${escapeHtml(msg.expiresTime)}` : `<br/>Detected: ${escapeHtml(msg.receivedTime)}`;
-        return `<div style="margin-bottom:8px;">
-          <div style="color:${cfg.color};font-weight:bold;font-size:12px;">${escapeHtml(msg.label)}</div>
-          <div style="color:#cbd5e1;font-size:11px;margin-bottom:4px;">${locText}</div>
-          <div style="border-top:1px solid #334155;padding-top:4px;color:#94a3b8;font-size:10px;line-height:1.4;">
-            Direction: ${dirText}<br/>
-            Duration Type: ${escapeHtml(msg.durationType)}
-            ${expireStr}
-          </div>
-        </div>`;
-      });
-      if (sorted.length > 3) tooltipLines.push(`<div style="color:#64748b;font-style:italic;margin-top:-4px;">+${sorted.length - 3} more</div>`);
-      const tooltipContent = `<div style="font-family:'Inter',sans-serif;font-size:11px;">
-        ${tooltipLines.join('')}
-      </div>`;
-
-      // Popup with all messages at this location
-      const popupParts = sorted.map(msg => {
-        const cfg = NATURE_COLORS[msg.nature] || NATURE_COLORS["Information"];
-        return `<div style="padding:4px 0;">
-          <div style="font-weight:bold;font-size:12px;color:${cfg.color};">
+        const divStr = msg.diversion ? ' · <span style="color:#f59e0b;">⚠ Diversion</span>' : '';
+        
+        return `<div style="margin-bottom:${isLast ? '0' : '8px'};">
+          <div style="color:${cfg.color};font-weight:bold;font-size:12px;">
             <i class="fa-solid ${cfg.icon}" style="margin-right:4px;"></i>${escapeHtml(msg.label)}
           </div>
-          <div style="font-size:11px;color:#94a3b8;line-height:1.5;">
-            ${escapeHtml(msg.nature)} · ${escapeHtml(msg.urgency)} · ${escapeHtml(msg.durationLabel)}<br/>
-            Direction: ${msg.direction ? 'Positive (+)' : 'Negative (−)'}${msg.extent > 0 ? ` · Extent: ${msg.extent}` : ''}<br/>
-            Received: ${escapeHtml(msg.receivedTime)}${msg.diversion ? ' · <span style="color:#f59e0b;">⚠ Diversion</span>' : ''}
+          <div style="color:#cbd5e1;font-size:11px;margin-bottom:4px;">${locText}</div>
+          <div style="border-top:1px solid #334155;padding-top:4px;color:#94a3b8;font-size:10px;line-height:1.4;">
+            Direction: ${dirText}${extentStr}<br/>
+            Duration Type: ${escapeHtml(msg.durationType)}<br/>
+            Duration: ${escapeHtml(msg.durationLabel)}
+            ${expireStr}${divStr}
           </div>
         </div>`;
-      });
-      const popupContent = `<div style="font-family:'Inter',sans-serif;min-width:200px;max-height:300px;overflow-y:auto;">
-        <div style="font-size:11px;color:#64748b;margin-bottom:4px;">
-          <b>#${lcd}</b>${loc.name ? ` — ${escapeHtml(loc.name)}` : ''}${loc.roadRef ? ` (${escapeHtml(loc.roadRef)})` : ''}
-        </div>
-        ${popupParts.join('<hr style="border-color:#334155;margin:4px 0;"/>')}
+      };
+      
+      const tooltipLines = sorted.slice(0, 3).map((msg, i) => renderMsgHtml(msg, i === Math.min(sorted.length, 3) - 1));
+      if (sorted.length > 3) tooltipLines.push(`<div style="color:#64748b;font-style:italic;margin-top:4px;">+${sorted.length - 3} more</div>`);
+      
+      const tooltipContent = `<div style="font-family:'Inter',sans-serif;font-size:11px;min-width:180px;">
+        ${tooltipLines.join('')}
+      </div>`;
+      
+      const popupParts = sorted.map((msg, i) => renderMsgHtml(msg, i === sorted.length - 1));
+      const popupContent = `<div style="font-family:'Inter',sans-serif;min-width:200px;max-height:300px;overflow-y:auto;font-size:11px;">
+        ${popupParts.join('<hr style="border-color:#334155;margin:8px 0;"/>')}
       </div>`;
 
       const existingEntry = markersByLcdRef.current.get(lcd);
@@ -954,6 +948,18 @@ export const TmcMap: React.FC<TmcMapProps> = ({
           </div>
         </div>
 
+        {serviceInfo.hasBeenEncrypted ? (
+          <div className="flex-1 flex flex-col items-center justify-center p-8 text-center bg-slate-900/50">
+            <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mb-4 border border-red-500/30">
+              <i className="fa-solid fa-lock text-3xl text-red-500"></i>
+            </div>
+            <h3 className="text-xl font-bold text-slate-100 mb-2">Encryption Detected</h3>
+            <p className="text-slate-400 text-sm max-w-lg leading-relaxed">
+              The "Map" function is not available for this TMC service because the location codes are encrypted and, therefore, cannot be recognized.
+            </p>
+          </div>
+        ) : (
+          <>
         {/* Error banner */}
         {error && (
           <div className="bg-red-900/30 border-b border-red-500/30 px-4 py-2 text-red-400 text-xs">
@@ -1053,7 +1059,7 @@ export const TmcMap: React.FC<TmcMapProps> = ({
           {showSidePanel && (
             <div className="w-[320px] bg-slate-900 border-l border-slate-700 flex flex-col shrink-0 z-[1000]">
               <div className="bg-slate-950 border-b border-slate-800 px-3 py-2 text-xs font-bold text-slate-300 uppercase tracking-wider shrink-0 flex justify-between items-center">
-                <span>Active Events</span>
+                <span>Events Decoded</span>
                 <span className="bg-slate-800 text-cyan-400 px-1.5 py-0.5 rounded text-[10px] font-mono">
                   {displayedMessages.filter(m => !m.isSystem && !hiddenNatures.has(m.nature) && resolvedLocations.get(m.locationCode)?.status === 'resolved').length}
                 </span>
@@ -1101,11 +1107,14 @@ export const TmcMap: React.FC<TmcMapProps> = ({
                             <span><span className="font-medium text-slate-400">Direction:</span> {msg.direction ? 'Positive (+)' : 'Negative (−)'}</span>
                             <span><span className="font-medium text-slate-400">Duration Type:</span> {msg.durationType}</span>
                           </div>
-                          {msg.extent > 0 && (
-                            <div className="flex justify-start">
+                          <div className="flex justify-between">
+                            {msg.extent > 0 ? (
                               <span><span className="font-medium text-slate-400">Extent:</span> {msg.extent}</span>
-                            </div>
-                          )}
+                            ) : (
+                              <span></span>
+                            )}
+                            <span><span className="font-medium text-slate-400">Duration:</span> {msg.durationLabel}</span>
+                          </div>
                           <div className="flex justify-between">
                             <span><span className="font-medium text-slate-400">Detected:</span> {msg.receivedTime}</span>
                             {msg.expiresTime && <span><span className="font-medium text-slate-400">Expires:</span> {msg.expiresTime}</span>}
@@ -1119,6 +1128,8 @@ export const TmcMap: React.FC<TmcMapProps> = ({
             </div>
           )}
         </div>
+        </>
+        )}
       </div>
       <style>{`
         .custom-dark-tooltip.leaflet-tooltip {
