@@ -1,7 +1,7 @@
 # RDSExpert Changelog
 
 ### --- 17/08/2026 ---
-- Fix tentative for Google Chrome users: Tooltips on the TMC Map were frozen upon opening and would not close.
+- Fix for Google Chrome users: Tooltips on the TMC Map were frozen upon opening and would not close.
 
 ### --- 15/08/2026 ---
 - Additional improvements to the TMC Map: Addition of a side panel listing detected events, added details in the tooltips for each map point, etc.
