@@ -25,7 +25,7 @@ Another version hosted by [@Bkram](https://github.com/bkram/) exists, and you wi
 Follow the on-screen instructions after indicating it, and you'll be able to use the tool that way.
 - - -
 <b>📱 RDSExpert is also available as a mobile version. However, you must rotate your smartphone to landscape mode to use the interface.</b>
-- - -
+# Notes regarding use with HTTP servers hosted on a local network
 <b>⚠️ Important note to Google Chrome users: Since April 2026, connecting to HTTP servers using a local address (e.g. 192.168.1.100) is no longer possible by default. You must disable the "Local Network Access Checks" feature in your web browser to bypass this block implemented by Google, otherwise the connection will fail.
 <br>
 <br>
@@ -43,7 +43,7 @@ When attempting to connect to a "local" server, a small window will appear near 
 Obviously, RDSExpert will only have access to RDS information from your server, and absolutely nothing else!
 <br>
 <br>
-If you encounter this issue with the plugin for FM-DX webservers, [please refer to its dedicated documentation by clicking here.](https://github.com/LucasGallone/RDSExpert-Plugin/blob/main/README.md)
+If you encounter this issue with the plugin for FM-DX webservers, [please refer to its dedicated documentation by clicking here.](https://github.com/LucasGallone/RDSExpert-Plugin#notes-regarding-use-with-http-servers-hosted-on-a-local-network)
 ## Data that can be decoded
 • General features for the station identification: <b>PI code</b>, <b>PS</b>, <b>TP/TA flags</b> (Traffic Program - Traffic Announcement) and <b>Music/Speech switch</b>.
 <br>
