@@ -4492,33 +4492,87 @@ const App: React.FC = () => {
   );
 };
 
-const SecurityErrorModal: React.FC<{ onClose: () => void; serverUrl: string }> = ({ onClose, serverUrl }) => createPortal(
-  <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
-    <div className="bg-slate-900 border-2 border-red-500/50 rounded-lg shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden relative">
-      <div className="p-6 text-center space-y-4">
-        <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mx-auto border border-red-500/30">
-          <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-          </svg>
+const SecurityErrorModal: React.FC<{ onClose: () => void; serverUrl: string }> = ({ onClose, serverUrl }) => {
+  let isMixedContent = false;
+  let isLocal = false;
+
+  try {
+    const url = new URL(serverUrl);
+    isMixedContent = window.location.protocol === 'https:' && url.protocol === 'ws:';
+    
+    const host = url.hostname;
+    isLocal = 
+      host === 'localhost' || 
+      host === '127.0.0.1' || 
+      host === '::1' || 
+      host.startsWith('192.168.') || 
+      host.startsWith('10.') || 
+      (host.startsWith('172.') && parseInt(host.split('.')[1] || '0') >= 16 && parseInt(host.split('.')[1] || '0') <= 31) ||
+      host.endsWith('.local');
+  } catch (e) {
+    // Fallback if URL parsing fails
+  }
+
+  return createPortal(
+    <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/90 backdrop-blur-md p-4 animate-in fade-in duration-200">
+      <div className="bg-slate-900 border-2 border-red-500/50 rounded-lg shadow-2xl w-full max-w-2xl flex flex-col overflow-hidden relative">
+        <div className="p-6 text-center space-y-4">
+          <div className="w-16 h-16 bg-red-900/20 rounded-full flex items-center justify-center mx-auto border border-red-500/30">
+            <svg className="w-8 h-8 text-red-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+            </svg>
+          </div>
+          
+          {isMixedContent ? (
+            <>
+              <h3 className="text-xl font-bold text-white leading-tight">Action required to continue</h3>
+              <p className="text-slate-300 text-sm leading-relaxed mt-4">
+                Unfortunately, due to web browser security restrictions, the HTTPS version of this interface can only be used with HTTPS servers.<br /><br />
+                You can bypass this limitation and connect to the specified HTTP server by using the HTTP version of this interface, hosted by @Bkram.<br /><br />
+                Click the button below to do so. (Opens a new tab)
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-xl font-bold text-white leading-tight break-all">Error: The connection attempt to {serverUrl} has failed.</h3>
+              {isLocal ? (
+                <p className="text-slate-300 text-xs leading-relaxed mt-4">
+                  Access to the server is potentially restricted by your browser due to "security reasons" enabled by default.
+                  <br />
+                  To bypass this limitation, please refer to the decoder's documentation by <a href="https://github.com/LucasGallone/RDSExpert#notes-regarding-use-with-http-servers-hosted-on-a-local-network" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">clicking here</a>.
+                </p>
+              ) : (
+                <p className="text-slate-300 text-xs leading-relaxed mt-4">
+                  Please verify that the indicated address is correct and that the server being queried is currently available.
+                  <br />
+                  If so, check that your firewall is not blocking the connection, then try again.
+                </p>
+              )}
+            </>
+          )}
         </div>
-        <h3 className="text-xl font-bold text-white leading-tight break-all">Error: The connection attempt to {serverUrl} has failed.</h3>
-        <p className="text-slate-300 text-xs leading-relaxed mt-4">
-          If you attempt to connect to an HTTP server using an address on your local network, your browser may block the connection for security reasons.
-          <br /><br />
-          To bypass this limitation, please refer to the decoder's documentation by <a href="https://github.com/LucasGallone/RDSExpert#notes-regarding-use-with-http-servers-hosted-on-a-local-network" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">clicking here</a>.
-        </p>
+        <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-center gap-3">
+          <button 
+            onClick={onClose} 
+            className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded transition-colors uppercase border border-slate-600"
+          >
+            Close
+          </button>
+          {isMixedContent && (
+            <a 
+              href={`http://rdsexpert.fmdx-webserver.nl:8080/?url=${encodeURIComponent(serverUrl)}`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="px-4 py-2 bg-blue-600 hover:bg-blue-500 text-white text-[11px] md:text-sm font-bold rounded transition-colors uppercase border border-blue-500 shadow-lg shadow-blue-500/20 flex items-center text-center"
+            >
+              SWITCH TO THE HTTP INTERFACE
+            </a>
+          )}
+        </div>
       </div>
-      <div className="p-4 bg-slate-950 border-t border-slate-800 flex justify-center gap-3">
-        <button 
-          onClick={onClose} 
-          className="px-6 py-2 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded transition-colors uppercase border border-slate-600"
-        >
-          Close
-        </button>
-      </div>
-    </div>
-  </div>,
-  document.body
-);
+    </div>,
+    document.body
+  );
+};
 
 export default App;
