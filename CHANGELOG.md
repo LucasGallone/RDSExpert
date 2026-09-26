@@ -1,5 +1,10 @@
 # RDSExpert Changelog
 
+### --- 26/09/2026 ---
+- Added "Coverage area" values as a tooltip on the PI field (Local, International, National, Supra-regional, Regional).
+- Fixed a display issue at startup.
+- Optimized progressive underscores on RT: They now remain (again) after any detected CR (Carriage Return) for better decoding and behaviour analysis.
+  
 ### --- 11/09/2026 ---
 - Added error messages displayed in a window for failed connections, along with a note regarding connection limitations to addresses on a local network.
 - Fixed an accidental regression that prevented progressive underscores from appearing on RTs sending empty text after the <0D> characters.
