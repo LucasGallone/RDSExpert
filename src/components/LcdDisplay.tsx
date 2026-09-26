@@ -101,8 +101,8 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
       // Handle "Empty" states logic first
       if (!text || text.length === 0) {
           if (type === 'rt' && (rawMode || progressiveMode)) {
-              // If in raw mode and it's a 32-char line, limit underscores to 32
-              if (rawMode && is32CharRT) return <>{Array(32).fill('_').join('')}{Array(32).fill(' ').join('')}</>;
+              // If in raw or progressive mode and it's a 32-char line, limit underscores to 32
+              if ((rawMode || progressiveMode) && is32CharRT) return <>{Array(32).fill('_').join('')}{Array(32).fill(' ').join('')}</>;
               return <>{Array(64).fill('_').join('')}</>;
           }
           if (type === 'ps') return <>{Array(8).fill(' ').map((_,i)=><span key={i}>&nbsp;</span>)}</>;
@@ -151,7 +151,8 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
              }
              
              const isLpsActuallyActive = data.longPs && data.longPs.trim().length > 0;
-             const shouldHideUnderscore = ((type === 'lps' || type === 'rt') && controlFound && !hasDecodedAfterControl) || 
+             const shouldHideUnderscore = (type === 'lps' && controlFound && !hasDecodedAfterControl) || 
+                                          (type === 'rt' && rawMode && controlFound && !hasDecodedAfterControl) || 
                                           (type === 'lps' && !isLpsActuallyActive) || 
                                           (is32CharRT && index >= 32);
 
@@ -246,8 +247,53 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
   const piCallsign = getPiCallsign(data.pi);
   const factoryPiInfo = FACTORY_PI_MAP[data.pi.toUpperCase()];
 
+  const COVERAGE_AREA_MAP: Record<string, string> = {
+    '0': 'Local',
+    '1': 'International',
+    '2': 'National',
+    '3': 'Supra-regional',
+    '4': 'Regional 1',
+    '5': 'Regional 2',
+    '6': 'Regional 3',
+    '7': 'Regional 4',
+    '8': 'Regional 5',
+    '9': 'Regional 6',
+    'A': 'Regional 7',
+    'B': 'Regional 8',
+    'C': 'Regional 9',
+    'D': 'Regional 10',
+    'E': 'Regional 11',
+    'F': 'Regional 12',
+  };
+
+  const getPiCoverageArea = (pi: string) => {
+    if (!pi || pi === "----" || pi.length !== 4 || !/^[0-9A-Fa-f]{4}$/.test(pi)) return null;
+    const secondNibble = pi.charAt(1).toUpperCase();
+    const area = COVERAGE_AREA_MAP[secondNibble];
+    return area || null;
+  };
+
+  const isDefaultOrFactoryPi = !!factoryPiInfo || 
+    data.pi?.toUpperCase() === "F000" || 
+    data.pi?.toUpperCase() === "FFFF" || 
+    data.pi?.toUpperCase() === "0000";
+
+  let piTooltipText: string | null = null;
+  if (factoryPiInfo) {
+    piTooltipText = factoryPiInfo;
+  } else if (!isDefaultOrFactoryPi) {
+    const coverageArea = getPiCoverageArea(data.pi);
+    if (piCallsign && coverageArea) {
+      piTooltipText = `Coverage area (RDS) > ${coverageArea}\nPI to Callsign (RBDS) > ${piCallsign}`;
+    } else if (piCallsign) {
+      piTooltipText = `PI to Callsign (RBDS) > ${piCallsign}`;
+    } else if (coverageArea) {
+      piTooltipText = `Coverage area > ${coverageArea}`;
+    }
+  }
+
   const handlePiMouseEnter = () => {
-    if (factoryPiInfo || piCallsign) {
+    if (piTooltipText) {
       piTooltipTimerRef.current = setTimeout(() => {
         setShowPiTooltip(true);
       }, 200);
@@ -421,9 +467,9 @@ export const LcdDisplay: React.FC<LcdDisplayProps> = ({ data, onReset, onTdcClic
                 <span className="text-4xl md:text-6xl font-mono font-bold text-white tracking-wider leading-none">
                   {data.pi}
                 </span>
-                {showPiTooltip && (factoryPiInfo || piCallsign) && (
-                  <div className="absolute bottom-full left-0 mb-3.5 px-3 py-1.5 bg-slate-800 text-white text-xs font-mono rounded border border-slate-600 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-50 animate-in fade-in zoom-in-95 duration-200 whitespace-nowrap">
-                    {factoryPiInfo ? factoryPiInfo : `PI to Callsign (USA) > ${piCallsign}`}
+                {showPiTooltip && piTooltipText && (
+                  <div className="absolute bottom-full left-0 mb-3.5 px-3 py-1.5 bg-slate-800 text-white text-xs font-mono rounded border border-slate-600 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-50 animate-in fade-in zoom-in-95 duration-200 whitespace-pre pointer-events-none text-left">
+                    {piTooltipText}
                     <div className="absolute top-full left-4 -mt-[1px] border-4 border-transparent border-t-slate-600"></div>
                   </div>
                 )}
@@ -714,11 +760,26 @@ const FlagBadge: React.FC<{
   blinkMode?: 'fast' | 'slow';
   onHover?: () => void;
 }> = ({ active, label, alert, color, tooltip, onClick, blinking, blinkMode, onHover }) => {
+  const [showTooltip, setShowTooltip] = useState(false);
+  const tooltipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const handleMouseEnter = () => {
     if (onHover) {
       onHover();
     }
+    if (tooltip) {
+      tooltipTimerRef.current = setTimeout(() => {
+        setShowTooltip(true);
+      }, 200);
+    }
+  };
+
+  const handleMouseLeave = () => {
+    if (tooltipTimerRef.current) {
+      clearTimeout(tooltipTimerRef.current);
+      tooltipTimerRef.current = null;
+    }
+    setShowTooltip(false);
   };
 
   let activeClass = "text-blue-300 bg-blue-900/20 border-blue-500/50 shadow-[0_0_8px_rgba(59,130,246,0.3)]";
@@ -750,13 +811,23 @@ const FlagBadge: React.FC<{
   const inactiveClass = "text-slate-700 bg-slate-900/50 border-slate-800 opacity-50";
 
   return (
-    <div className="relative inline-block" onMouseEnter={handleMouseEnter} title={tooltip}>
+    <div 
+      className="relative inline-block" 
+      onMouseEnter={handleMouseEnter} 
+      onMouseLeave={handleMouseLeave}
+    >
         <span 
           onClick={onClick}
           className={`text-[10px] font-bold px-2 py-0.5 rounded border ${active ? activeClass : inactiveClass} transition-all duration-300 ${onClick ? 'cursor-pointer hover:bg-slate-800' : 'cursor-default'}`}
         >
           {label}
         </span>
+        {showTooltip && tooltip && (
+          <div className="absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-4 py-2 bg-slate-800 text-white text-sm font-mono rounded border border-slate-600 shadow-[0_4px_12px_rgba(0,0,0,0.5)] z-50 animate-in fade-in zoom-in-95 duration-200 whitespace-pre pointer-events-none text-left">
+            {tooltip}
+            <div className="absolute top-full left-1/2 -translate-x-1/2 -mt-[1px] border-4 border-transparent border-t-slate-600"></div>
+          </div>
+        )}
     </div>
   );
 };
