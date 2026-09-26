@@ -27,6 +27,19 @@
         background-color: #0f172a;
         color: #e2e8f0;
       }
+      /* Suppress transitions on initial load to prevent flash on F5 */
+      .preload * {
+        -webkit-transition: none !important;
+        -moz-transition: none !important;
+        -ms-transition: none !important;
+        -o-transition: none !important;
+        transition: none !important;
+      }
+      /* Critical styles for inactive LCD indicators to prevent flash */
+      .text-slate-700 { color: #334155; }
+      .opacity-50 { opacity: 0.5; }
+      .opacity-60 { opacity: 0.6; }
+      .border-slate-800 { border-color: #1e293b; }
       .font-mono {
         font-family: 'JetBrains Mono', monospace;
       }
@@ -114,9 +127,18 @@
 }
 </script>
 </head>
-  <body>
+  <body class="preload">
     <div id="root"></div>
     <!-- Point to the source file in the src directory -->
     <script type="module" src="/src/index.tsx"></script>
+    <script>
+      window.addEventListener('DOMContentLoaded', function() {
+        requestAnimationFrame(function() {
+          requestAnimationFrame(function() {
+            document.body.classList.remove('preload');
+          });
+        });
+      });
+    </script>
   </body>
 </html>
